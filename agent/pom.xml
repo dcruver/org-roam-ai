@@ -144,4 +144,17 @@
         </repository>
     </repositories>
 
+    <distributionManagement>
+        <repository>
+            <id>gitea</id>
+            <name>Gitea Maven Repository</name>
+            <url>https://gitea.cruver.network/api/packages/dcruver/maven</url>
+        </repository>
+        <snapshotRepository>
+            <id>gitea</id>
+            <name>Gitea Maven Repository</name>
+            <url>https://gitea.cruver.network/api/packages/dcruver/maven</url>
+        </snapshotRepository>
+    </distributionManagement>
+
 </project>
