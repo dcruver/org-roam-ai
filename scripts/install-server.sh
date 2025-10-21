@@ -77,17 +77,47 @@ ollama pull llama3.1:8b  # or gpt-oss:20b if available
 echo_success "Ollama configured"
 
 # ============================================================================
-# 3. Install/Configure Emacs
+# 3. Check Emacs and org-roam-semantic
 # ============================================================================
 echo_info "Step 3/6: Checking Emacs installation..."
 
-if command -v emacs >/dev/null 2>&1; then
-    EMACS_VERSION=$(emacs --version | head -n1)
-    echo_info "Found: ${EMACS_VERSION}"
+if ! command -v emacs >/dev/null 2>&1; then
+    echo_error "Emacs is not installed"
+    echo ""
+    echo_info "Please install Emacs first:"
+    echo_info "  sudo apt install emacs"
+    echo ""
+    echo_info "Then configure org-roam and org-roam-semantic before running this script."
+    echo_info "See: https://github.com/org-roam/org-roam"
+    echo_info "     https://github.com/example/org-roam-semantic"
+    exit 1
+fi
+
+EMACS_VERSION=$(emacs --version | head -n1)
+echo_info "Found: ${EMACS_VERSION}"
+
+# Check if org-roam-semantic is installed
+echo_info "Checking for org-roam-semantic package..."
+
+# Try to check if org-roam-semantic is available in Emacs
+if emacs --batch --eval "(require 'org-roam-semantic)" 2>/dev/null; then
+    echo_success "org-roam-semantic is installed"
+elif emacs --batch --eval "(require 'org-roam-vector-search)" 2>/dev/null; then
+    echo_success "org-roam-vector-search is installed"
 else
-    echo_warn "Emacs not found. Installing..."
-    sudo apt update
-    sudo apt install -y emacs
+    echo_error "org-roam-semantic is not installed in Emacs"
+    echo ""
+    echo_info "Please install org-roam-semantic before running this script."
+    echo ""
+    echo_info "Installation instructions:"
+    echo_info "1. Clone org-roam-semantic to your Emacs config directory"
+    echo_info "2. Add to your Emacs init file:"
+    echo_info "   (add-to-list 'load-path \"~/.emacs.d/org-roam-semantic\")"
+    echo_info "   (require 'org-roam-vector-search)"
+    echo_info "3. Configure Ollama settings"
+    echo_info "4. Restart Emacs and verify: M-x org-roam-semantic-status"
+    echo ""
+    exit 1
 fi
 
 # Create org-roam directory
