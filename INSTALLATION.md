@@ -64,23 +64,26 @@ The script doesn't configure Emacs automatically. You need to:
   (org-roam-db-autosync-mode))
 ```
 
-**Load org-roam-ai packages:**
+**Install org-roam-semantic (via straight.el - recommended):**
 ```elisp
-;; Add to load-path
-(add-to-list 'load-path "/opt/org-roam-ai/emacs")
+;; Install from GitHub
+(straight-use-package
+  '(org-roam-semantic :host github :repo "dcruver/org-roam-semantic"))
 
-;; Load semantic search
+;; Load both modules
 (require 'org-roam-vector-search)
-(setq org-roam-semantic-ollama-url "http://localhost:11434"
-      org-roam-semantic-embedding-model "nomic-embed-text"
-      org-roam-semantic-generation-model "llama3.1:8b")
-
-;; Load AI assistant
 (require 'org-roam-ai-assistant)
+
+;; Configure Ollama
+(customize-set-variable 'org-roam-semantic-ollama-url "http://localhost:11434")
+(customize-set-variable 'org-roam-semantic-embedding-model "nomic-embed-text")
+(customize-set-variable 'org-roam-semantic-generation-model "llama3.1:8b")
 
 ;; Generate embeddings for existing notes
 (org-roam-semantic-generate-all-embeddings)
 ```
+
+For full installation options, see: https://github.com/dcruver/org-roam-semantic
 
 **Load org-roam API (for MCP):**
 ```elisp

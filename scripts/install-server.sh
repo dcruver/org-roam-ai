@@ -89,7 +89,7 @@ if ! command -v emacs >/dev/null 2>&1; then
     echo ""
     echo_info "Then configure org-roam and org-roam-semantic before running this script."
     echo_info "See: https://github.com/org-roam/org-roam"
-    echo_info "     https://github.com/example/org-roam-semantic"
+    echo_info "     https://github.com/dcruver/org-roam-semantic"
     exit 1
 fi
 
@@ -109,13 +109,20 @@ else
     echo ""
     echo_info "Please install org-roam-semantic before running this script."
     echo ""
-    echo_info "Installation instructions:"
-    echo_info "1. Clone org-roam-semantic to your Emacs config directory"
-    echo_info "2. Add to your Emacs init file:"
-    echo_info "   (add-to-list 'load-path \"~/.emacs.d/org-roam-semantic\")"
-    echo_info "   (require 'org-roam-vector-search)"
-    echo_info "3. Configure Ollama settings"
-    echo_info "4. Restart Emacs and verify: M-x org-roam-semantic-status"
+    echo_info "Installation instructions (via straight.el - recommended):"
+    echo_info "Add to your Emacs init file:"
+    echo ""
+    echo_info "  (straight-use-package"
+    echo_info "    '(org-roam-semantic :host github :repo \"dcruver/org-roam-semantic\"))"
+    echo_info ""
+    echo_info "  (require 'org-roam-vector-search)"
+    echo_info "  (require 'org-roam-ai-assistant)"
+    echo_info ""
+    echo_info "  (customize-set-variable 'org-roam-semantic-ollama-url"
+    echo_info "                          \"http://localhost:11434\")"
+    echo ""
+    echo_info "Restart Emacs and verify: M-x org-roam-semantic-status"
+    echo_info "Full instructions: https://github.com/dcruver/org-roam-semantic"
     echo ""
     exit 1
 fi
