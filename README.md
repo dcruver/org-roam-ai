@@ -6,72 +6,59 @@ Transform your org-roam knowledge base with semantic search, intelligent AI assi
 
 ## What is org-roam-ai?
 
-org-roam-ai is a comprehensive AI enhancement suite for [org-roam](https://www.orgroam.com/), providing:
+org-roam-ai provides AI-powered automation and API services for [org-roam](https://www.orgroam.com/) knowledge bases with [org-roam-semantic](https://github.com/dcruver/org-roam-semantic):
 
-- **Semantic Search**: Find notes by meaning, not just keywords, using vector embeddings
-- **AI-Powered Assistance**: Context-aware AI that understands your existing knowledge
-- **Automated Maintenance**: GOAP-based agent that keeps your knowledge base healthy
-- **API Integration**: Clean MCP server for external tools and automation workflows
+- **MCP Server**: HTTP/stdio API for semantic search, note creation, and automation workflows
+- **GOAP Agent**: Autonomous maintenance with LLM-powered format fixing and link suggestions
+- **External Integration**: Powers n8n workflows, chatbots, and external tool access
+
+**Prerequisite**: [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) must be installed for semantic search and AI features
 
 ## Architecture
 
-The system consists of three integrated components:
-
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Emacs Layer (elisp)                          │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ org-roam-semantic                                         │  │
-│  │ - Vector search within Emacs                             │  │
-│  │ - AI-powered note enhancement                            │  │
-│  │ - Embedding storage as org properties                    │  │
-│  │ - Interactive commands (C-c v, C-c a)                    │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            │ emacsclient
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    MCP Server Layer (Python)                    │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ org-roam-mcp                                              │  │
-│  │ - HTTP/stdio MCP protocol server                         │  │
-│  │ - Semantic search API (via org-roam-semantic)            │  │
-│  │ - Note creation with auto-embedding                      │  │
-│  │ - Integration with n8n, external tools                   │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            │ HTTP JSON-RPC
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Agent Layer (Java)                           │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ org-roam-agent (Embabel GOAP)                            │  │
-│  │ - Autonomous corpus maintenance                          │  │
-│  │ - LLM-powered format analysis & fixing                   │  │
-│  │ - Link suggestion via semantic search                    │  │
-│  │ - Health scoring & action planning                       │  │
-│  │ - Spring Shell interactive CLI                           │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  org-roam-semantic (External Prerequisite)                      │
+│  https://github.com/dcruver/org-roam-semantic                   │
+│  - Vector search within Emacs                                   │
+│  - AI-powered note enhancement                                  │
+│  - Embedding storage as org properties                          │
+│  - Interactive commands (C-c v, C-c a)                          │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ emacsclient
+┌────────────────────────▼────────────────────────────────────────┐
+│  org-roam-mcp (Python) - MCP Server                             │
+│  - HTTP/stdio MCP protocol server                               │
+│  - Semantic search API (via org-roam-semantic)                  │
+│  - Note creation with auto-embedding                            │
+│  - Integration with n8n, external tools                         │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ HTTP JSON-RPC
+┌────────────────────────▼────────────────────────────────────────┐
+│  org-roam-agent (Java) - GOAP Maintenance Agent                 │
+│  - Autonomous corpus maintenance                                │
+│  - LLM-powered format analysis & fixing                         │
+│  - Link suggestion via semantic search                          │
+│  - Health scoring & action planning                             │
+│  - Spring Shell interactive CLI                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Overview
 
-**[emacs/](emacs/README.md) - Emacs Package (org-roam-semantic)**
-- Elisp package for semantic search and AI assistance within Emacs
-- Vector embeddings stored as org-mode properties
-- Interactive commands for search, linking, and AI enhancement
-- Direct Ollama integration for embeddings and generation
+**[org-roam-semantic](https://github.com/dcruver/org-roam-semantic) - Prerequisite**
+- Elisp package providing semantic search and AI assistance
+- **Must be installed separately** via straight.el
+- Provides the foundation for semantic operations
+- See: https://github.com/dcruver/org-roam-semantic
 
-**[mcp/](mcp/README.md) - MCP Server (org-roam-mcp)**
+**[mcp/](mcp/README.md) - MCP Server**
 - Python-based Model Context Protocol server
 - HTTP and stdio transport modes
-- Wraps Emacs functions for external tool integration
-- Powers n8n workflows, API integrations, and agent operations
+- Wraps org-roam-semantic functions for API access
+- Powers n8n workflows and external integrations
 
-**[agent/](agent/README.md) - Maintenance Agent (org-roam-agent)**
+**[agent/](agent/README.md) - Maintenance Agent**
 - Java/Spring Boot GOAP planning agent
 - Autonomous knowledge base maintenance
 - LLM-powered formatting, linking, and health analysis
@@ -81,38 +68,29 @@ The system consists of three integrated components:
 
 ### Prerequisites
 
-All three components require:
-- **Ollama** installed and running with models:
-  ```bash
-  ollama pull nomic-embed-text    # For embeddings
-  ollama pull llama3.1:8b         # For AI generation
-  ollama pull gpt-oss:20b         # For agent LLM operations
-  ```
-- **Emacs** with **org-roam** configured
-- **Emacs server** running (`M-x server-start` or in init file)
+**Required for all components:**
+1. **[org-roam-semantic](https://github.com/dcruver/org-roam-semantic)** - Install first via straight.el:
+   ```elisp
+   (straight-use-package
+     '(org-roam-semantic :host github :repo "dcruver/org-roam-semantic"))
 
-### Installation Paths
+   (require 'org-roam-vector-search)
+   (require 'org-roam-ai-assistant)
+   ```
 
-Choose the components you need:
+2. **Ollama** with required models:
+   ```bash
+   ollama pull nomic-embed-text    # For embeddings
+   ollama pull llama3.1:8b         # For AI generation
+   ollama pull gpt-oss:20b         # For agent (optional)
+   ```
 
-#### 1. Emacs Package Only (Basic Semantic Search)
-```elisp
-;; In your Emacs config
-(straight-use-package
-  '(org-roam-semantic :local-repo "/path/to/org-roam-ai/emacs"))
+3. **Emacs** with **org-roam** configured
+4. **Emacs server** running (`M-x server-start`)
 
-(require 'org-roam-vector-search)
-(require 'org-roam-ai-assistant)
+### Installation
 
-;; Generate embeddings for existing notes
-M-x org-roam-semantic-generate-all-embeddings
-
-;; Try semantic search
-C-c v s
-```
-**→ See [emacs/README.md](emacs/README.md) for full setup**
-
-#### 2. + MCP Server (API Access & n8n Integration)
+#### 1. MCP Server (API Access & n8n Integration)
 ```bash
 # Install MCP server
 cd mcp
@@ -134,7 +112,7 @@ curl -X POST http://localhost:8000 -H "Content-Type: application/json" -d '{
 ```
 **→ See [mcp/README.md](mcp/README.md) for API reference**
 
-#### 3. + Maintenance Agent (Automated Corpus Health)
+#### 2. Maintenance Agent (Automated Corpus Health)
 ```bash
 # Build agent
 cd agent
@@ -153,50 +131,47 @@ starwars> audit
 
 ## Use Cases
 
-### For Individual Users (Emacs Package)
-- Find related notes by concept, not keywords
-- AI-assisted note enhancement using your existing knowledge
-- Automatic embedding generation for new notes
-- Interactive semantic linking
-
-### For Automation (MCP Server)
+### MCP Server - API Integration & Automation
 - Integrate org-roam with n8n workflows
-- API access to semantic search from other tools
+- API access to semantic search from external tools
 - Automated note creation with embeddings
 - Matrix/Discord/Slack chatbots for knowledge base queries
+- Python/JavaScript applications needing org-roam access
 
-### For Knowledge Base Maintenance (Agent)
+### GOAP Agent - Knowledge Base Maintenance
 - Automated format checking and fixing via LLM
 - Intelligent link suggestions using semantic similarity
 - Health scoring and corpus analysis
 - Scheduled audits and reports
+- Autonomous corpus improvement
 
 ## How They Work Together
 
-### Example: Creating a Note with Full AI Enhancement
+### Example: Automated Note Enhancement
 
 ```
 1. User creates note in Emacs (or via MCP API)
 2. org-roam-semantic generates embedding automatically
 3. MCP server provides API access to the note
 4. Agent discovers note during next audit
-5. Agent analyzes format (LLM), suggests links (semantic search)
+5. Agent analyzes format (LLM), suggests links (via MCP semantic search)
 6. Agent generates proposal for improvements
 7. User reviews and applies suggestions
 ```
 
 ### Data Flow
 
-- **Embeddings**: Generated by Emacs package, stored in org files, queried via MCP
-- **Semantic Search**: Emacs package for interactive use, MCP for API access, Agent for link suggestions
-- **Note Modification**: Agent generates proposals → User approves → Emacs/MCP applies changes
+- **Embeddings**: Generated by org-roam-semantic, stored in org files, queried via MCP
+- **Semantic Search**: org-roam-semantic in Emacs, MCP for API access, Agent via MCP
+- **Note Modification**: Agent generates proposals → User approves → Applied via MCP
 
 ## Documentation Map
 
 ### Getting Started
-- [Emacs Package Setup](emacs/README.md) - Interactive use
+- [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) - Prerequisite Emacs package
 - [MCP Server Setup](mcp/README.md) - API integration
 - [Agent Setup](agent/README.md) - Automated maintenance
+- [Server Installation](INSTALLATION.md) - Complete stack setup
 
 ### Architecture & Development
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Deep dive into system design
@@ -204,33 +179,31 @@ starwars> audit
 - [CLAUDE.md](CLAUDE.md) - AI assistant instructions
 
 ### Component Documentation
-- [Emacs: Vector Search Guide](emacs/docs/org-roam-vector-search.md)
-- [Emacs: AI Assistant Guide](emacs/docs/org-roam-ai-assistant.md)
 - [MCP: Distribution Guide](mcp/DISTRIBUTION.md)
-- [Agent: Implementation Details](agent/IMPLEMENTATION.md)
+- [Agent: Implementation Details](agent/CLAUDE.md)
 
 ## Requirements
 
-### Emacs Package
+### Prerequisites (All Components)
+- **org-roam-semantic** installed via straight.el
 - Emacs 27+ with org-roam
+- Emacs server running
 - Ollama with nomic-embed-text, llama3.1:8b
 
 ### MCP Server
 - Python 3.8+
-- Emacs server accessible via emacsclient
 - org-roam-semantic loaded in Emacs
 
 ### Agent
 - Java 21+
 - Maven 3.6+
-- MCP server running (for semantic operations)
-- Ollama with gpt-oss:20b, nomic-embed-text
+- MCP server running
+- Ollama with gpt-oss:20b (optional)
 
 ## Technology Stack
 
 | Component | Languages | Key Frameworks |
 |-----------|-----------|----------------|
-| Emacs | Elisp | org-roam, Ollama integration |
 | MCP | Python 3.8+ | Starlette, MCP protocol |
 | Agent | Java 21 | Spring Boot 3.5, Embabel GOAP, Spring AI |
 
@@ -244,9 +217,7 @@ This is a monorepo containing three integrated projects. When contributing:
 
 ## License
 
-GPL-3.0-or-later (Emacs package)
-MIT License (MCP server)
-[To be specified] (Agent)
+MIT License
 
 ## Acknowledgments
 
@@ -258,7 +229,8 @@ MIT License (MCP server)
 ---
 
 **Choose your starting point:**
-- Want semantic search in Emacs? → [emacs/README.md](emacs/README.md)
+- Need semantic search in Emacs? → [org-roam-semantic](https://github.com/dcruver/org-roam-semantic)
 - Building automation workflows? → [mcp/README.md](mcp/README.md)
 - Need automated maintenance? → [agent/README.md](agent/README.md)
+- Installing the full stack? → [INSTALLATION.md](INSTALLATION.md)
 - Understanding the architecture? → [ARCHITECTURE.md](ARCHITECTURE.md)

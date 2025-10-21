@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-org-roam-ai is a monorepo containing three integrated components for AI-powered org-roam knowledge base management:
+org-roam-ai is a monorepo containing two integrated components for AI-powered org-roam knowledge base management:
 
-1. **emacs/** - Elisp package for semantic search and AI assistance within Emacs
-2. **mcp/** - Python MCP server providing API access to org-roam via HTTP/stdio
-3. **agent/** - Java GOAP agent for autonomous knowledge base maintenance
+1. **mcp/** - Python MCP server providing API access to org-roam via HTTP/stdio
+2. **agent/** - Java GOAP agent for autonomous knowledge base maintenance
+
+**Prerequisite**: [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) must be installed separately
 
 **Key Documents**:
 - [README.md](README.md) - User-facing overview and quick start
@@ -20,11 +21,6 @@ org-roam-ai is a monorepo containing three integrated components for AI-powered 
 **Most Common Development Commands**:
 
 ```bash
-# Emacs Package (no build needed)
-# In Emacs: (add-to-list 'load-path "/path/to/org-roam-ai/emacs")
-# Then: (require 'org-roam-vector-search) and (require 'org-roam-ai-assistant)
-# Test: M-x org-roam-semantic-status
-
 # MCP Server
 cd mcp && source .venv/bin/activate
 pip install -e ".[dev]"      # Initial setup
@@ -40,10 +36,10 @@ cd agent
 ./test-audit.sh               # Quick non-interactive test
 
 # Prerequisites (all components)
+# Install org-roam-semantic first: https://github.com/dcruver/org-roam-semantic
 ollama serve                  # Start Ollama
-# In Emacs: (server-start)    # Start Emacs server
-curl http://localhost:11434/api/tags  # Verify Ollama
 emacsclient --eval '(+ 1 1)'  # Verify Emacs server
+curl http://localhost:11434/api/tags  # Verify Ollama
 ```
 
 ## Repository Structure
@@ -51,15 +47,11 @@ emacsclient --eval '(+ 1 1)'  # Verify Emacs server
 ```
 org-roam-ai/
 ├── CLAUDE.md           This file (monorepo overview)
-├── emacs/              Elisp package (org-roam-semantic)
-│   ├── *.el           Core modules
-│   ├── docs/          Feature documentation
-│   └── CLAUDE.md      Emacs component guide (if exists)
 ├── mcp/                Python MCP server (org-roam-mcp)
 │   ├── src/           Source code
 │   ├── tests/         Test suite
 │   ├── pyproject.toml Package configuration
-│   └── CLAUDE.md      MCP component guide (if exists)
+│   └── CLAUDE.md      MCP component guide
 └── agent/              Java GOAP agent (org-roam-agent)
     ├── src/           Source code
     ├── samples/notes/ Sample notes for testing
@@ -71,117 +63,9 @@ org-roam-ai/
 
 **Note**: Each component has its own CLAUDE.md with detailed implementation notes. This root-level file provides the big picture and cross-component integration patterns.
 
----
-
-# Component: Emacs Package (emacs/)
-
-## Overview
-
-Pure Emacs Lisp package providing semantic search and AI assistance. No build system required.
-
-## Core Files
-
-- **org-roam-vector-search.el** - Vector embedding generation, storage, similarity search
-- **org-roam-ai-assistant.el** - Context-aware AI enhancement using related notes
-
-## Development Commands
-
-```elisp
-;; Load for development
-(add-to-list 'load-path "/path/to/org-roam-ai/emacs")
-(require 'org-roam-vector-search)
-(require 'org-roam-ai-assistant)
-
-;; Test
-M-x org-roam-semantic-status        ; Check embedding coverage
-M-x org-roam-semantic-version       ; Version info
-M-x org-roam-ai-setup-check         ; Comprehensive check
-
-;; Generate embeddings
-M-x org-roam-semantic-generate-all-embeddings
-
-;; Interactive search
-C-c v s  ; Search by concept
-C-c v i  ; Insert similar notes
-```
-
-## Key Configuration Variables
-
-```elisp
-org-roam-semantic-ollama-url           ; Default: http://localhost:11434
-org-roam-semantic-embedding-model      ; Default: nomic-embed-text
-org-roam-semantic-generation-model     ; Default: llama3.1:8b
-org-roam-semantic-embedding-dimensions ; Default: 768
-org-roam-semantic-similarity-cutoff    ; Default: 0.55
-org-roam-semantic-enable-chunking      ; Default: nil
-org-roam-semantic-min-chunk-size       ; Default: 100 words
-org-roam-semantic-max-chunk-size       ; Default: 1000 words
-org-roam-ai-default-model              ; Default: llama3.1:8b
-org-roam-ai-context-limit              ; Default: 3 similar notes
-```
-
-## Data Storage Architecture
-
-**Embedding Storage**: `:EMBEDDING:` property in org files
-```org
-:PROPERTIES:
-:ID: abc123
-:EMBEDDING: [0.123, -0.456, 0.789, ...]
-:EMBEDDING_MODEL: nomic-embed-text
-:EMBEDDING_TIMESTAMP: [2025-10-20 Mon 09:15]
-:END:
-```
-
-**Section-level embeddings** (when chunking enabled):
-```org
-** Section Heading
-:PROPERTIES:
-:CHUNK_ID: chunk-abc123-1
-:EMBEDDING: [...]
-:END:
-```
-
-## API Integration
-
-- **HTTP to Ollama**: Built-in `url-retrieve-synchronously`
-- **JSON**: Native `json-read` and `json-encode`
-- **Org-to-markdown**: `ox-md` for content preprocessing
-- **Timeout**: 30 seconds for API calls
-
-## Debugging
-
-```elisp
-;; Enable debug mode
-(setq debug-on-error t)
-
-;; Test embedding generation
-(org-roam-semantic-generate-embedding)
-
-;; Test similarity calculation
-(org-roam-semantic-get-similar-data "query" 5)
-```
-
-## Common Issues
-
-**"Symbols function definition is void: fourth"**
-- Missing `cl-lib` dependency
-- Fix: Add `(require 'cl-lib)` before loading package
-
-**"Error calling Ollama"**
-- Ollama not running or wrong URL
-- Fix: Verify with `curl http://localhost:11434/api/tags`
-
-**Multi-heading processing issues**
-- Headings below word count threshold not processed
-- Check `org-roam-semantic-min-chunk-size` setting
+**External Dependency**: org-roam-semantic (https://github.com/dcruver/org-roam-semantic) provides the Emacs semantic search functionality that both MCP and Agent depend on.
 
 ---
-
-# Component: MCP Server (mcp/)
-
-## Overview
-
-Python-based Model Context Protocol server providing HTTP and stdio access to org-roam functionality.
 
 ## Development Environment
 
@@ -588,13 +472,13 @@ com.embabel.agent.core/  Embabel stubs
 
 ## Workflow 1: Adding New MCP Tool
 
-**When**: Need new Emacs functionality accessible via API
+**When**: Need new org-roam-semantic functionality accessible via API
 
 **Steps**:
-1. Add elisp function in `emacs/` (or reference existing in org-roam-api.el)
+1. Add/verify elisp function exists in org-roam-semantic or org-roam-api.el
 2. Add tool definition in `mcp/src/org_roam_mcp/server.py`
 3. Test via HTTP: `curl -X POST http://localhost:8000 ...`
-4. Agent can now call via MCP client (when implemented)
+4. Agent can now call via MCP client
 5. Update `mcp/README.md` with tool documentation
 
 ## Workflow 2: Adding New Agent Action
@@ -615,11 +499,12 @@ com.embabel.agent.core/  Embabel stubs
 
 **Steps**:
 1. Pull model: `ollama pull new-model`
-2. Update Emacs config:
+2. Update org-roam-semantic config in Emacs:
    ```elisp
    (setq org-roam-semantic-embedding-model "new-model")
    (setq org-roam-semantic-embedding-dimensions <check-model-docs>)
    ```
+   See: https://github.com/dcruver/org-roam-semantic
 3. Update agent config (`application.yml`):
    ```yaml
    spring.ai.ollama.embedding.options.model: new-model
@@ -651,11 +536,6 @@ com.embabel.agent.core/  Embabel stubs
 
 ## Code Style
 
-**Emacs**:
-- Dash-separated names, prefix `org-roam-semantic-`
-- Docstrings for all public functions
-- Line limit: 80 chars where practical
-
 **Python**:
 - Black format (line length 88)
 - Ruff linting
@@ -669,7 +549,6 @@ com.embabel.agent.core/  Embabel stubs
 
 ## Testing
 
-**Emacs**: Manual testing in Emacs
 **MCP**: `pytest` with mocks
 **Agent**: JUnit with Spring Boot Test
 
@@ -684,13 +563,9 @@ fix(mcp): handle character arrays in JSON
 docs(architecture): add integration diagrams
 ```
 
-**Scopes**: `emacs`, `mcp`, `agent`, `docs`, `ci`
+**Scopes**: `mcp`, `agent`, `docs`, `ci`
 
 ## Performance Optimization
-
-**Emacs**:
-- Only regenerate embeddings when content changes
-- Lazy load embeddings for search
 
 **MCP**:
 - Keep Emacs server running (don't restart frequently)
@@ -738,10 +613,6 @@ docs(architecture): add integration diagrams
 
 # Important File Paths
 
-**Emacs Package**:
-- Code: `emacs/*.el`
-- Docs: `emacs/docs/*.md`
-
 **MCP Server**:
 - Code: `mcp/src/org_roam_mcp/`
 - Tests: `mcp/tests/`
@@ -769,7 +640,7 @@ docs(architecture): add integration diagrams
 6. Update relevant documentation
 
 **For cross-component changes**:
-1. Consider impact on all three layers
+1. Consider impact on MCP and Agent layers
 2. Update integration docs in ARCHITECTURE.md
 3. Test full stack integration if possible
 4. Document new integration patterns
