@@ -49,21 +49,6 @@ tramp
 *.ipr
 
 # ===========================
-# Emacs Package (emacs/)
-# ===========================
-
-# Compiled elisp
-emacs/**/*.elc
-
-# Org-roam database (if accidentally placed here)
-emacs/**/org-roam.db
-emacs/**/org-roam.db-*
-
-# Emacs backups
-emacs/**/*~
-emacs/**/#*#
-
-# ===========================
 # Python/MCP Server (mcp/)
 # ===========================
 
