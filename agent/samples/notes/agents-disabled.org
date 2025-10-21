@@ -1,0 +1,17 @@
+:PROPERTIES:
+:ID:       protected-note-123
+:CREATED:  [2025-01-12 11:00:00]
+:UPDATED:  [2025-01-12 11:30:00]
+:TAGS:     personal private
+:END:
+* Personal Notes #agents:off
+
+This note has the #agents:off tag, so the gardener should not modify it.
+
+Even though this note might have formatting issues or missing links,
+the agent should respect the opt-out tag and leave it alone.
+
+This is useful for:
+- Personal notes
+- Work-in-progress drafts
+- Notes with intentional non-standard formatting
