@@ -1,0 +1,347 @@
+# org-roam-ai - Consolidated .gitignore for all components
+
+# ===========================
+# General OS & Editor Files
+# ===========================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+.projectile
+
+# Vim
+*.swp
+*.swo
+*.swn
+.*.sw?
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ===========================
+# Emacs Package (emacs/)
+# ===========================
+
+# Compiled elisp
+emacs/**/*.elc
+
+# Org-roam database (if accidentally placed here)
+emacs/**/org-roam.db
+emacs/**/org-roam.db-*
+
+# Emacs backups
+emacs/**/*~
+emacs/**/#*#
+
+# ===========================
+# Python/MCP Server (mcp/)
+# ===========================
+
+# Byte-compiled / optimized / DLL files
+mcp/**/__pycache__/
+mcp/**/*.py[cod]
+mcp/**/*$py.class
+
+# C extensions
+mcp/**/*.so
+
+# Distribution / packaging
+mcp/.Python
+mcp/build/
+mcp/develop-eggs/
+mcp/dist/
+mcp/downloads/
+mcp/eggs/
+mcp/.eggs/
+mcp/lib/
+mcp/lib64/
+mcp/parts/
+mcp/sdist/
+mcp/var/
+mcp/wheels/
+mcp/share/python-wheels/
+mcp/**/*.egg-info/
+mcp/.installed.cfg
+mcp/*.egg
+mcp/MANIFEST
+
+# PyInstaller
+mcp/**/*.manifest
+mcp/**/*.spec
+
+# Installer logs
+mcp/pip-log.txt
+mcp/pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+mcp/htmlcov/
+mcp/.tox/
+mcp/.nox/
+mcp/.coverage
+mcp/.coverage.*
+mcp/.cache
+mcp/nosetests.xml
+mcp/coverage.xml
+mcp/**/*.cover
+mcp/**/*.py,cover
+mcp/.hypothesis/
+mcp/.pytest_cache/
+mcp/cover/
+
+# Translations
+mcp/**/*.mo
+mcp/**/*.pot
+
+# Django stuff:
+mcp/**/*.log
+mcp/local_settings.py
+mcp/db.sqlite3
+mcp/db.sqlite3-journal
+
+# Flask stuff:
+mcp/instance/
+mcp/.webassets-cache
+
+# Scrapy stuff:
+mcp/.scrapy
+
+# Sphinx documentation
+mcp/docs/_build/
+
+# PyBuilder
+mcp/.pybuilder/
+mcp/target/
+
+# Jupyter Notebook
+mcp/.ipynb_checkpoints
+
+# IPython
+mcp/profile_default/
+mcp/ipython_config.py
+
+# pyenv
+mcp/.python-version
+
+# pipenv
+mcp/Pipfile.lock
+
+# poetry
+mcp/poetry.lock
+
+# pdm
+mcp/.pdm.toml
+
+# PEP 582
+mcp/__pypackages__/
+
+# Celery stuff
+mcp/celerybeat-schedule
+mcp/celerybeat.pid
+
+# SageMath parsed files
+mcp/**/*.sage.py
+
+# Environments
+mcp/.env
+mcp/.venv
+mcp/env/
+mcp/venv/
+mcp/ENV/
+mcp/env.bak/
+mcp/venv.bak/
+
+# Spyder project settings
+mcp/.spyderproject
+mcp/.spyproject
+
+# Rope project settings
+mcp/.ropeproject
+
+# mkdocs documentation
+mcp/site
+
+# mypy
+mcp/.mypy_cache/
+mcp/.dmypy.json
+mcp/dmypy.json
+
+# Pyre type checker
+mcp/.pyre/
+
+# pytype static type analyzer
+mcp/.pytype/
+
+# Cython debug symbols
+mcp/cython_debug/
+
+# ===========================
+# Java/Maven (agent/)
+# ===========================
+
+# Compiled class files
+agent/**/*.class
+
+# Log files
+agent/**/*.log
+agent/**/*.log.*
+
+# BlueJ files
+agent/**/*.ctxt
+
+# Mobile Tools for Java (J2ME)
+agent/**/.mtj.tmp/
+
+# Package Files
+agent/**/*.jar
+agent/**/*.war
+agent/**/*.nar
+agent/**/*.ear
+agent/**/*.zip
+agent/**/*.tar.gz
+agent/**/*.rar
+
+# Virtual machine crash logs
+agent/**/hs_err_pid*
+agent/**/replay_pid*
+
+# Maven
+agent/target/
+agent/pom.xml.tag
+agent/pom.xml.releaseBackup
+agent/pom.xml.versionsBackup
+agent/pom.xml.next
+agent/release.properties
+agent/dependency-reduced-pom.xml
+agent/buildNumber.properties
+agent/.mvn/timing.properties
+agent/.mvn/wrapper/maven-wrapper.jar
+
+# Eclipse
+agent/.settings/
+agent/.classpath
+agent/.project
+agent/.factorypath
+
+# IntelliJ IDEA
+agent/.idea/
+agent/**/*.iml
+agent/**/*.iws
+
+# NetBeans
+agent/nbproject/private/
+agent/nbbuild/
+agent/dist/
+agent/nbdist/
+agent/.nb-gradle/
+
+# VS Code
+agent/.vscode/
+
+# Spring Boot
+agent/spring-shell.log
+
+# Database files (SQLite)
+agent/**/*.db
+agent/**/*.db-shm
+agent/**/*.db-wal
+
+# Gardener-specific
+agent/.gardener/
+agent/embabel-note-gardener.log
+
+# Test output
+agent/test-output/
+agent/**/*.tmp
+
+# ===========================
+# Project-specific
+# ===========================
+
+# Org-roam database (anywhere)
+**/org-roam.db
+**/org-roam.db-shm
+**/org-roam.db-wal
+
+# Ollama model caches (if any)
+**/.ollama/
+
+# Local configuration overrides
+**/local.properties
+**/local-config.yml
+
+# Secrets and credentials
+**/*.pem
+**/*.key
+**/secrets.yml
+**/.env.local
+**/.env.production.local
+
+# Build artifacts
+**/build/
+**/out/
+
+# Logs
+**/*.log
+
+# Temporary files
+**/.tmp/
+**/tmp/
+**/*.tmp
+**/*.bak
+**/*.backup
+
+# ===========================
+# Git
+# ===========================
+
+# Git hooks (optional - might want to track these)
+# .git/hooks/
+
+# ===========================
+# Documentation build artifacts
+# ===========================
+
+# Generated documentation
+**/docs/_build/
+**/docs/.doctrees/
+
+# ===========================
+# Deployment
+# ===========================
+
+# Deployment scripts (uncomment if sensitive)
+# deploy.sh
+# deploy-prod.sh
+
+# Docker (if added in future)
+**/.dockerignore
