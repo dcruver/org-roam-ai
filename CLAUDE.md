@@ -4,643 +4,591 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-org-roam-ai is a monorepo containing two integrated components for AI-powered org-roam knowledge base management:
+org-roam-ai is a **monorepo** containing two integrated components for AI-powered org-roam knowledge base management:
 
 1. **mcp/** - Python MCP server providing API access to org-roam via HTTP/stdio
 2. **agent/** - Java GOAP agent for autonomous knowledge base maintenance
 
-**Prerequisite**: [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) must be installed separately
+**Critical External Dependency**: [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) must be installed separately in Emacs. Both components depend on it for semantic search functionality.
 
-**Key Documents**:
-- [README.md](README.md) - User-facing overview and quick start
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical architecture and integration patterns
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Development workflows and conventions
+## Documentation Map
+
+**Component-Specific Guides** (detailed implementation):
+- **[mcp/CLAUDE.md](mcp/CLAUDE.md)** - MCP server development, tool implementations, Emacs integration
+- **[agent/CLAUDE.md](agent/CLAUDE.md)** - Agent architecture, GOAP planning, action implementations
+
+**Architecture & Development**:
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design, data flow, integration patterns
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Unified development workflows, testing, code style
+
+**User Documentation**:
+- **[README.md](README.md)** - User-facing overview and quick start
+- **Component READMEs**: [mcp/README.md](mcp/README.md), [agent/README.md](agent/README.md)
+
+**This file focuses on**: Cross-component integration, monorepo workflows, big-picture architecture understanding, and production deployment.
+
+## Production Deployment
+
+### org-roam-agent-backend (192.168.20.136)
+
+**Full stack deployment** on dedicated LXC container with Emacs, MCP server, and Agent:
+
+**System Architecture**:
+```
+┌────────────────────────────────────────────────────────────┐
+│         org-roam-agent-backend (192.168.20.136)            │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Agent (Java) → /opt/org-roam-agent/                  │  │
+│  │ MCP Server (Python) → /opt/org-roam-mcp-venv/        │  │
+│  │ Emacs + Doom + org-roam-semantic                     │  │
+│  │ Notes: /mnt/org-roam/files/ (shared volume)          │  │
+│  └──────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────┘
+         │ Ollama API
+         ▼
+feynman.cruver.network:11434
+(gpt-oss:20b, nomic-embed-text)
+```
+
+**Key Configuration Differences**:
+- **Ollama**: Points to `feynman.cruver.network:11434` (not localhost)
+- **Shared volume**: `/external-storage/org-roam` mounted at `/mnt/org-roam`
+- **Systemd services**: Both MCP and Agent run as services
+
+**Service Management**:
+```bash
+# On org-roam-agent-backend
+ssh root@192.168.20.136
+
+# MCP Server (always running)
+systemctl status org-roam-mcp
+journalctl -u org-roam-mcp -f
+
+# Agent (scheduled nightly audits at 2 AM)
+systemctl status org-roam-agent-audit.timer
+systemctl list-timers  # Check next run time
+journalctl -u org-roam-agent-audit -f
+
+# Manual agent execution
+cd /opt/org-roam-agent
+java -Dspring.shell.interactive.enabled=false \
+     -Dspring.shell.command.script.enabled=true \
+     -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar \
+     status
+```
+
+**Configuration Files**:
+- Agent: `/opt/org-roam-agent/application.yml`
+- MCP: `/opt/org-roam-mcp-venv/` (package-based installation)
+- Emacs: `~/.doom.d` → `/mnt/org-roam/doom` (symlink)
+
+**Important**: `EMACS_SERVER_FILE=/root/emacs-server/server` must be set for all emacsclient calls.
+
+### n8n-backend.cruver.network
+
+**MCP Server only** (upgraded to package-based installation):
+- Location: `/opt/org-roam-mcp-venv/`
+- Version: 0.1.0 (wheel package)
+- Systemd service: `org-roam-mcp.service`
+- Used by: n8n workflows for note creation and search
+- Old git clone removed, now using proper Python wheel
+
+**Update procedure**:
+```bash
+# 1. Build wheel locally
+cd mcp && python -m build
+
+# 2. Copy to server
+scp dist/org_roam_mcp-0.1.0-py3-none-any.whl root@n8n-backend.cruver.network:/tmp/
+
+# 3. Install
+ssh root@n8n-backend.cruver.network
+systemctl stop org-roam-mcp
+/opt/org-roam-mcp-venv/bin/pip install --upgrade /tmp/org_roam_mcp-0.1.0-py3-none-any.whl
+systemctl start org-roam-mcp
+```
 
 ## Quick Reference
 
-**Most Common Development Commands**:
-
+**Prerequisites (all components)**:
 ```bash
-# MCP Server
-cd mcp && source .venv/bin/activate
-pip install -e ".[dev]"      # Initial setup
-python -m org_roam_mcp.server # Run server
-pytest                        # Run tests
-black src/ tests/ && ruff check --fix src/ tests/  # Format & lint
+# 1. Install org-roam-semantic in Emacs first
+# See: https://github.com/dcruver/org-roam-semantic
 
-# Agent
+# 2. Start required services
+ollama serve                  # Start Ollama (required for all components)
+emacs --daemon                # Start Emacs server (if not running)
+
+# 3. Verify setup
+emacsclient --eval '(+ 1 1)'              # Should return: 2
+curl http://localhost:11434/api/tags      # Should list Ollama models
+ollama list | grep "nomic-embed-text"     # Verify embedding model installed
+```
+
+**Common Development Commands**:
+```bash
+# MCP Server (see mcp/CLAUDE.md for details)
+cd mcp
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m org_roam_mcp.server  # Starts on port 8000
+pytest                          # Run tests
+
+# Agent (see agent/CLAUDE.md for details)
 cd agent
-./mvnw clean package          # Build
-./mvnw spring-boot:run        # Run
-./mvnw test                   # Run tests
-./test-audit.sh               # Quick non-interactive test
+./mvnw clean package
+./mvnw spring-boot:run         # Interactive shell
+./test-audit.sh                # Quick automated test
 
-# Prerequisites (all components)
-# Install org-roam-semantic first: https://github.com/dcruver/org-roam-semantic
-ollama serve                  # Start Ollama
-emacsclient --eval '(+ 1 1)'  # Verify Emacs server
-curl http://localhost:11434/api/tags  # Verify Ollama
+# Full stack integration test
+# Terminal 1: Start MCP
+cd mcp && org-roam-mcp
+# Terminal 2: Start Agent
+cd agent && ./mvnw spring-boot:run
+# In agent shell: audit, proposals list
 ```
 
 ## Repository Structure
 
 ```
 org-roam-ai/
-├── CLAUDE.md           This file (monorepo overview)
-├── mcp/                Python MCP server (org-roam-mcp)
-│   ├── src/           Source code
-│   ├── tests/         Test suite
-│   ├── pyproject.toml Package configuration
-│   └── CLAUDE.md      MCP component guide
-└── agent/              Java GOAP agent (org-roam-agent)
-    ├── src/           Source code
-    ├── samples/notes/ Sample notes for testing
-    ├── pom.xml        Maven config
-    ├── test-audit.sh  Non-interactive test script
-    ├── test-llm-integration.sh  LLM integration test
-    └── CLAUDE.md      Agent component guide (detailed implementation)
+├── CLAUDE.md              This file (monorepo overview)
+├── ARCHITECTURE.md        Technical deep dive
+├── DEVELOPMENT.md         Development workflows
+├── README.md              User-facing overview
+│
+├── mcp/                   Python MCP server (org-roam-mcp)
+│   ├── CLAUDE.md         → Component-specific development guide
+│   ├── README.md         → User documentation
+│   ├── src/              → Python source code
+│   ├── tests/            → Pytest test suite
+│   └── pyproject.toml    → Package configuration
+│
+└── agent/                 Java GOAP agent (org-roam-agent)
+    ├── CLAUDE.md         → Component-specific development guide
+    ├── README.md         → User documentation
+    ├── src/              → Java source code
+    ├── samples/notes/    → Test corpus
+    ├── pom.xml           → Maven configuration
+    └── test-*.sh         → Automated test scripts
 ```
 
-**Note**: Each component has its own CLAUDE.md with detailed implementation notes. This root-level file provides the big picture and cross-component integration patterns.
-
-**External Dependency**: org-roam-semantic (https://github.com/dcruver/org-roam-semantic) provides the Emacs semantic search functionality that both MCP and Agent depend on.
+**Navigation**: For detailed implementation information, consult component-specific CLAUDE.md files. This file focuses on cross-component integration.
 
 ---
 
-## Development Environment
+## System Architecture (Big Picture)
 
-```bash
-cd mcp
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-## Running
-
-```bash
-# HTTP mode (default, port 8000)
-python -m org_roam_mcp.server
-# or
-org-roam-mcp
-
-# Test
-curl http://localhost:8000  # Health check
-```
-
-## Architecture
-
-**Dual-Mode Transport**:
-- **HTTP**: JSON-RPC 2.0 on port 8000 (for n8n, web apps)
-- **stdio**: MCP protocol via stdin/stdout (for MCP clients)
-
-**Core Components**:
-- `server.py` - Main server, tool registration, both transports
-- `emacs_client.py` - Wraps emacsclient calls, parameter escaping, JSON parsing
-- `tools/` - Individual tool implementations
-
-## Available MCP Tools
-
-| Tool | Elisp Function | Purpose |
-|------|----------------|---------|
-| `semantic_search` | `my/api-semantic-search` | Vector similarity via org-roam-semantic |
-| `contextual_search` | `my/api-contextual-search` | Keyword search with full context |
-| `search_notes` | `my/api-search-notes` | Basic title/content search |
-| `create_note` | `my/api-create-note` | Create note with auto-embedding |
-| `add_daily_entry` | `my/add-daily-entry-structured` | Structured daily journal entry |
-| `get_daily_content` | `my/get-daily-note-content` | Retrieve daily note |
-| `sync_database` | `org-roam-db-sync` | Force database sync |
-
-## Data Flow
+The three-tier architecture enables semantic search, API access, and autonomous maintenance:
 
 ```
-HTTP POST → Starlette → Server → EmacsClient
-  → emacsclient --eval '(elisp-function args)'
-  → Emacs executes → Returns JSON string
-  → EmacsClient parses → Server formats → HTTP response
+┌─────────────────────────────────────────────────────────────────┐
+│  org-roam-semantic (External Prerequisite)                      │
+│  - Emacs package providing vector search                        │
+│  - Embedding generation via Ollama                              │
+│  - Storage as :PROPERTIES: in org files                         │
+│  - Interactive commands (C-c v s, C-c a)                        │
+│  Must be installed: github.com/dcruver/org-roam-semantic        │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ emacsclient --eval
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  org-roam-mcp (Python MCP Server)                               │
+│  - HTTP/stdio transport (port 8000)                             │
+│  - Wraps org-roam-semantic elisp functions                      │
+│  - Tools: semantic_search, create_note, contextual_search       │
+│  - Used by: n8n workflows, Agent, external integrations         │
+│  See: mcp/CLAUDE.md for implementation details                  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ HTTP JSON-RPC
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  org-roam-agent (Java GOAP Agent)                               │
+│  - Autonomous corpus maintenance                                │
+│  - LLM-powered format analysis/fixing (Ollama)                  │
+│  - Semantic link suggestions (via MCP)                          │
+│  - Health scoring & action planning                             │
+│  - Spring Shell CLI (status, audit, execute, proposals)         │
+│  See: agent/CLAUDE.md for implementation details                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Testing
+**Key Integration Points**:
+1. **org-roam-semantic → Emacs**: Elisp functions for semantic search and embedding generation
+2. **MCP → org-roam-semantic**: Python calls elisp via `emacsclient --eval`
+3. **Agent → MCP**: Java HTTP client calls MCP server on port 8000
+4. **Agent → Ollama**: Direct HTTP calls for LLM-based format analysis
 
-```bash
-# Run tests
-pytest
-
-# Specific test
-pytest tests/test_emacs_client.py
-
-# With coverage
-pytest --cov=src/
-
-# Verbose
-pytest -v
+**Data Flow Example** (Agent suggests links):
 ```
-
-## Code Quality
-
-```bash
-# Format
-black src/ tests/
-
-# Lint
-ruff check src/ tests/
-
-# Fix auto-fixable
-ruff check --fix src/ tests/
-
-# Type check
-mypy src/
-```
-
-## Critical Implementation Notes
-
-**Parameter Escaping**:
-- All strings escaped via `EmacsClient._escape_for_elisp()`
-- Prevents shell injection
-
-**JSON Response Handling**:
-- Character arrays (numeric keys) auto-reconstructed to strings
-- Handled by `_parse_json_response()`
-
-**Elisp Function Signatures** (important!):
-- `my/add-daily-entry-structured`: 5 params (timestamp, title, points_list, steps_list, tags_list)
-- `my/api-create-note`: 4 params (title, content, type, confidence)
-- `my/get-daily-note-content`: Optional date param (defaults to today)
-
-**Daily Entry Formatting**:
-- TODO entries get "TODO " prefix added in Python before calling elisp
-- `entry_type` parameter is client-side only (not passed to elisp)
-
-**Embedding Auto-Generation**:
-- `my/api-create-note` auto-generates embeddings if org-roam-semantic available
-- No separate step needed for new notes
-
-## Environment Variables
-
-```bash
-EMACS_SERVER_FILE  # Path to Emacs server socket (default: ~/emacs-server/server)
-```
-
-## Common Issues
-
-**"coroutine 'main' was never awaited"**
-- Fixed in current version
-- Reinstall if encountered: `pip install -e .`
-
-**"ModuleNotFoundError"**
-- Wrong virtual environment or package not installed
-- Fix: `source .venv/bin/activate && pip install -e .`
-
-**Connection to Emacs fails**
-- Check Emacs server running: `emacsclient --eval '(+ 1 1)'`
-- Verify `EMACS_SERVER_FILE` points to correct socket
-
-**JSON parsing errors**
-- Usually character arrays from Emacs (automatically handled)
-- Check for unexpected elisp return format
-
-## Distribution
-
-```bash
-# Build
-python -m build
-
-# Publish to Gitea
-python -m twine upload --repository gitea dist/*
-
-# See DISTRIBUTION.md for full guide
+Agent.audit() → CorpusScanner → finds orphan notes
+  → SuggestLinksAction.execute()
+    → OrgRoamMcpClient.semanticSearch(note.content)
+      → HTTP POST to MCP server
+        → EmacsClient.call_elisp("my/api-semantic-search", ...)
+          → emacsclient --eval '(my/api-semantic-search "..." 5 0.7)'
+            → Emacs: org-roam-semantic-get-similar-data
+              → Returns JSON with similar notes + scores
+        → MCP parses, returns to Agent
+    → Agent LLM generates link rationale
+    → Creates proposal with diff
 ```
 
 ---
 
-# Component: Agent (agent/)
+## Cross-Component Workflows
 
-## Overview
+### Workflow 1: Adding New MCP Tool
 
-Java 21 Spring Boot application using Embabel GOAP framework for autonomous knowledge base maintenance.
-
-## Build & Run
-
-```bash
-cd agent
-
-# Build
-./mvnw clean package
-
-# Build without tests
-./mvnw clean package -DskipTests
-
-# Run
-./mvnw spring-boot:run
-# or
-java -jar target/embabel-note-gardener-*.jar
-
-# With custom notes path
-ORG_ROAM_PATH=/path/to/notes java -jar target/*.jar
-
-# With profile
-java -jar target/*.jar --spring.profiles.active=auto
-```
-
-## Testing
-
-```bash
-# Run tests
-./mvnw test
-
-# Specific test
-./mvnw test -Dtest=CorpusScannerTest
-
-# Automated audit test (non-interactive shell mode)
-./test-audit.sh
-# Uses: ORG_ROAM_PATH=./samples/notes and pipes commands via stdin
-# Tests: status, audit commands
-
-# LLM integration test (quick verification)
-./test-llm-integration.sh
-# Times out after 30s, checks for "Audit completed" in output
-```
-
-**Non-Interactive Testing**:
-```bash
-# Run shell commands via stdin (for CI/testing)
-java -Dspring.shell.interactive.enabled=false \
-     -Dspring.shell.command.script.enabled=true \
-     -jar target/embabel-note-gardener-*.jar <<EOF
-status
-audit
-apply safe
-exit
-EOF
-```
-
-## Architecture
-
-**GOAP Planning** (Goal-Oriented Action Planning):
-1. `CorpusScanner` scans org files, builds `CorpusState`
-2. `GOAPPlanner` evaluates actions based on preconditions, costs
-3. Generates `ActionPlan` with prioritized actions
-4. Executes actions, reassesses state after each
-
-**World State**: `CorpusState`
-- Per-note: embeddings, format status, link count, health score
-- Corpus-wide: total notes, orphans, health distribution
-
-**Goals**:
-- `MaintainHealthyCorpus` - Overall health ≥ target
-- `EnsureEmbeddingsFresh` - All notes have recent embeddings
-- `EnforceFormattingPolicy` - Proper org structure
-- `ReduceOrphans` - Minimize isolated notes
-
-**Actions** (implemented):
-- `ComputeEmbeddings` - Generate missing/stale embeddings (via MCP)
-- `NormalizeFormatting` - LLM-based format fixing
-- `SuggestLinks` - Semantic search for link proposals (via MCP)
-
-## Shell Commands
-
-```
-status              Show corpus health ✅ Working
-audit               Scan with LLM format checking, generate plan ✅ Working
-execute             Execute current plan ✅ Working
-apply safe          Apply safe actions only ✅ Working
-proposals list      List pending proposals ✅ Working
-proposals show <id> Show proposal details ✅ Working
-proposals apply <id> Apply proposal (TODO)
-report              Generate daily report (TODO)
-```
-
-**Action Execution**:
-- `execute` - Runs all actions in the plan (safe + proposal actions)
-- `apply safe` - Runs only safe actions, skips proposals
-- Both commands show detailed execution results with status indicators
-
-## Dependencies
-
-**Key Maven Dependencies**:
-- `spring-boot-starter-parent`: 3.5.5
-- `embabel-agent-starter-shell`: 0.1.2 (includes Spring Shell, Spring AI)
-- **IMPORTANT**: Do NOT add `spring-ai-ollama-spring-boot-starter` separately
-
-**Embabel Repository**:
-```xml
-<repository>
-    <id>embabel-releases</id>
-    <url>https://repo.embabel.com/artifactory/libs-release</url>
-</repository>
-```
-
-## LLM Integration
-
-**OllamaChatService**:
-- Format analysis during audit: `analyzeOrgFormatting(content)`
-- Format fixing: `normalizeOrgFormatting(content, noteId)`
-- Link rationale: LLM generates explanation for proposals
-
-**Configuration** (`application.yml`):
-```yaml
-spring:
-  ai:
-    ollama:
-      base-url: http://localhost:11434
-      chat:
-        options:
-          model: gpt-oss:20b
-      embedding:
-        options:
-          model: nomic-embed-text:latest
-
-embabel:
-  models:
-    default-llm: gpt-oss:20b
-
-gardener:
-  embedding-model: nomic-embed-text:latest
-  mcp:
-    enabled: true
-    base-url: http://localhost:8000
-    timeout: 30000
-```
-
-## MCP Integration
-
-**Why Agent Calls MCP**:
-1. Reuse org-roam-mcp's semantic search implementation
-2. Separation of concerns (agent = planning, MCP = org-roam ops)
-3. No duplication of embedding logic
-
-**Implementation** (`OrgRoamMcpClient.java`):
-- ✅ HTTP JSON-RPC client for MCP server communication
-- ✅ Semantic search using vector embeddings
-- ✅ Contextual search with full note content
-- ✅ Server health checking and availability detection
-- ✅ Configurable timeout and base URL
-- ✅ Used by SuggestLinks action for link proposals
-
-## LLM-Based Formatting
-
-**During Audit** (`CorpusScanner.checkFormatWithLLM()`):
-- Called for notes failing simple format check
-- LLM identifies specific issues (missing properties, malformed headings)
-- Results cached in `NoteMetadata`
-- Why audit takes 15-30 seconds (LLM call per problematic note)
-
-**During Execution** (`NormalizeFormattingAction.execute()`):
-- `OllamaChatService.normalizeOrgFormatting(content, noteId)`
-- LLM returns corrected content
-- Preserves all information, fixes structure
-- Cost: 3.0 per note (2 LLM calls: analyze + fix)
-
-## Action Safety Classification
-
-**Safe Actions** (auto-apply in auto mode):
-- `NormalizeFormatting` - Structure fixes only
-- `ComputeEmbeddings` - Additive, no content change
-
-**Proposal Actions** (require human approval):
-- `SuggestLinks` - Changes note semantics
-- `ProposeSplitOrMerge` - Content modification
-
-## Health Score
-
-**Components** (total: 100 points):
-- Formatting: 10
-- Provenance: 25
-- Embeddings freshness: 15
-- Links: 20
-- Taxonomy: 10
-- Contradictions (inverse): 10
-- Staleness (inverse): 10
-
-**Calculated by**: `HealthScoreCalculator.calculateNoteHealth(NoteMetadata)`
-
-## Package Structure
-
-```
-com.dcruver.orgroam/
-├── app/          Spring Boot + Shell
-├── domain/       State, goals, actions, planning
-│   ├── actions/  Action implementations
-│   └── planning/ GOAPPlanner, ActionPlan
-├── io/           File I/O, patches, backups
-├── nlp/          Ollama integration
-└── reporting/    Health reports
-
-com.embabel.agent.core/  Embabel stubs
-├── action/       Action base class
-└── goal/         Goal base class
-```
-
-## Common Issues
-
-**Ollama connection failed**:
-- Check: `curl http://localhost:11434/api/tags`
-- Verify models pulled: `ollama list`
-
-**Model not found**:
-- Pull models: `ollama pull gpt-oss:20b && ollama pull nomic-embed-text:latest`
-
-**Spring AI version conflicts**:
-- DO NOT add spring-ai-ollama separately
-- Embabel starter includes correct version
-
-**MCP connection issues**:
-- Verify MCP running: `curl http://localhost:8000`
-- Check `gardener.mcp.base-url` in application.yml
-
-## Implementation Status
-
-**✅ Completed & Working**:
-- Corpus scanning with LLM format checking
-- GOAP planning with cost estimates
-- Health score calculation
-- Action execution engine (ActionExecutor)
-- Shell commands: status, audit, execute, apply safe, proposals list/show
-- NormalizeFormatting action (LLM-based, fully working)
-- SuggestLinks action (MCP-based semantic search, fully working)
-- MCP client integration (OrgRoamMcpClient, fully working)
-- ComputeEmbeddings action (delegates to MCP)
-
-**📋 Next Priority**:
-- Proposal application workflow (proposals apply command)
-- File watching for background daemon mode
-- Daily report generation
-
----
-
-# Cross-Component Workflows
-
-## Workflow 1: Adding New MCP Tool
-
-**When**: Need new org-roam-semantic functionality accessible via API
+**When**: Need new org-roam functionality accessible via API
 
 **Steps**:
-1. Add/verify elisp function exists in org-roam-semantic or org-roam-api.el
-2. Add tool definition in `mcp/src/org_roam_mcp/server.py`
-3. Test via HTTP: `curl -X POST http://localhost:8000 ...`
-4. Agent can now call via MCP client
-5. Update `mcp/README.md` with tool documentation
+1. **Add elisp function** in org-roam-semantic or create `org-roam-api.el`
+   - Must return JSON string
+   - See: [org-roam-semantic repo](https://github.com/dcruver/org-roam-semantic)
 
-## Workflow 2: Adding New Agent Action
+2. **Add MCP tool** in `mcp/src/org_roam_mcp/server.py`
+   - Define with `@mcp.tool()` decorator
+   - Call elisp via `emacs_client.call_elisp()`
+   - See: mcp/CLAUDE.md for parameter escaping rules
+
+3. **Test via HTTP**:
+   ```bash
+   curl -X POST http://localhost:8000 -d '{
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {"name": "your_tool", "arguments": {...}}
+   }'
+   ```
+
+4. **Agent can now use** via `OrgRoamMcpClient.java`
+
+5. **Document** in `mcp/README.md`
+
+### Workflow 2: Adding New Agent Action
 
 **When**: Need new automated maintenance capability
 
 **Steps**:
-1. Create action class in `agent/src/.../domain/actions/`
-2. Implement: preconditions, cost, execute logic
-3. May call MCP for semantic ops (via HTTP client)
-4. May call LLM for analysis/rationale (via OllamaChatService)
-5. Annotate with `@Component` (auto-registered)
-6. Test with sample notes: `ORG_ROAM_PATH=./samples/notes`
+1. **Create action class** in `agent/src/.../domain/actions/XyzAction.java`
+   - Extend `Action<CorpusState>`
+   - Implement: `canExecute()`, `estimateCost()`, `execute()`
+   - See: agent/CLAUDE.md for GOAP patterns
 
-## Workflow 3: Updating Embedding Model
+2. **Choose integration approach**:
+   - **For semantic ops**: Call MCP via `OrgRoamMcpClient`
+   - **For LLM analysis**: Call `OllamaChatService`
+   - **For file ops**: Use `OrgFileReader`/`OrgFileWriter`
 
-**When**: Want to use different Ollama model
+3. **Annotate** with `@Component` (Spring auto-registers)
+
+4. **Test** with sample corpus:
+   ```bash
+   ORG_ROAM_PATH=./samples/notes ./mvnw spring-boot:run
+   starwars> audit  # Should show new action in plan
+   ```
+
+5. **Document** in `agent/README.md`
+
+### Workflow 3: Changing Embedding Model
+
+**When**: Switch to different Ollama model (e.g., `mxbai-embed-large`)
+
+**Impact**: All three components must be updated
 
 **Steps**:
-1. Pull model: `ollama pull new-model`
-2. Update org-roam-semantic config in Emacs:
+1. **Pull model**: `ollama pull mxbai-embed-large`
+
+2. **Update org-roam-semantic** (in Emacs config):
    ```elisp
-   (setq org-roam-semantic-embedding-model "new-model")
-   (setq org-roam-semantic-embedding-dimensions <check-model-docs>)
+   (setq org-roam-semantic-embedding-model "mxbai-embed-large")
+   (setq org-roam-semantic-embedding-dimensions 1024)  ; Check model docs
    ```
-   See: https://github.com/dcruver/org-roam-semantic
-3. Update agent config (`application.yml`):
+
+3. **Update agent** (`agent/src/main/resources/application.yml`):
    ```yaml
-   spring.ai.ollama.embedding.options.model: new-model
-   gardener.embedding-model: new-model
+   spring.ai.ollama.embedding.options.model: mxbai-embed-large
+   gardener.embedding-model: mxbai-embed-large
    ```
-4. Regenerate embeddings: `M-x org-roam-semantic-generate-all-embeddings`
 
-## Workflow 4: Debugging Integration Issues
+4. **MCP auto-detects** (uses Emacs configuration, no change needed)
 
-**When**: Agent can't connect to MCP, or MCP can't reach Emacs
-
-**Checklist**:
-1. Verify Ollama: `curl http://localhost:11434/api/tags`
-2. Verify Emacs server: `emacsclient --eval '(+ 1 1)'`
-3. Verify MCP server: `curl http://localhost:8000`
-4. Test MCP tool manually:
-   ```bash
-   curl -X POST http://localhost:8000 -d '{
-     "method": "tools/call",
-     "params": {"name": "search_notes", "arguments": {"query": "test"}}
-   }'
+5. **Regenerate embeddings**:
+   ```elisp
+   M-x org-roam-semantic-generate-all-embeddings
    ```
-5. Check agent config: `gardener.mcp.base-url` in application.yml
-6. Review logs: `tail -f agent/embabel-note-gardener.log`
+
+### Workflow 4: Debugging Integration Issues
+
+**Symptom**: Agent can't find notes, MCP errors, or Emacs unreachable
+
+**Systematic Diagnosis**:
+```bash
+# 1. Verify Ollama
+curl http://localhost:11434/api/tags
+ollama list  # Check models installed
+
+# 2. Verify Emacs server
+emacsclient --eval '(+ 1 1)'  # Should return: 2
+emacsclient --eval '(featurep (quote org-roam-semantic))'  # Should return: t
+
+# 3. Verify MCP server
+curl http://localhost:8000  # Health check
+curl -X POST http://localhost:8000 -d '{
+  "jsonrpc": "2.0",
+  "method": "tools/list",
+  "id": 1
+}'  # List available tools
+
+# 4. Test MCP tool manually
+curl -X POST http://localhost:8000 -d '{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "search_notes",
+    "arguments": {"query": "test"}
+  },
+  "id": 1
+}'
+
+# 5. Check agent config
+cat agent/src/main/resources/application.yml | grep -A3 mcp
+
+# 6. Review logs
+tail -f mcp/org-roam-mcp.log  # If using logging
+tail -f agent/embabel-note-gardener.log
+```
+
+**Common Issues**:
+- **MCP → Emacs**: `EMACS_SERVER_FILE` environment variable incorrect
+- **Agent → MCP**: `gardener.mcp.base-url` not set or MCP not running
+- **org-roam-semantic not loaded**: Check Emacs `*Messages*` buffer for load errors
 
 ---
 
-# Development Best Practices
+## Key Technical Decisions
 
-## Code Style
+### Why Three Separate Components?
 
-**Python**:
-- Black format (line length 88)
-- Ruff linting
-- Type hints required
-- Google-style docstrings
+**Modularity**: Each serves different users and use cases
+- Emacs users may only need org-roam-semantic (C-c v s in Emacs)
+- Automation users need MCP (n8n workflows, chatbots)
+- Maintenance users need Agent (automated corpus health)
 
-**Java**:
-- Spring conventions (4-space indent)
-- Javadoc for all public classes/methods
-- Descriptive test names
+**Technology Fit**: Right tool for each job
+- Elisp: Best for Emacs integration (org-roam-semantic)
+- Python: Excellent for API servers and scripting (MCP)
+- Java: Strong for complex planning and enterprise deployment (Agent)
 
-## Testing
+**Independent Evolution**: Update components without breaking others
 
-**MCP**: `pytest` with mocks
-**Agent**: JUnit with Spring Boot Test
+### Why MCP Server Between Agent and Emacs?
 
-## Git Commits
+**Avoids duplication**:
+- org-roam-semantic already has proven Ollama integration
+- MCP wraps it cleanly for external access
+- Agent doesn't reimplement embedding logic
 
-Follow Conventional Commits:
+**Separation of concerns**:
+- Agent: GOAP planning, LLM format analysis, action execution
+- MCP: org-roam operations, semantic search delegation
+- Clear boundaries make testing easier
+
+**Language strengths**:
+- Python excels at Emacs scripting (`emacsclient` calls)
+- Java excels at GOAP planning algorithms
+
+### Why Store Embeddings in Org Files?
+
+**Portability**: No external database, notes are self-contained
+
+**Git-trackable**: Embeddings version with content (though large diffs)
+
+**Tool-agnostic**: Any tool can read `:PROPERTIES:` drawer
+
+**Simplicity**: No sync between database and files
+
+### Why Ollama Not Cloud APIs?
+
+**Privacy**: Knowledge base never leaves machine
+
+**Cost**: No per-token fees for embeddings or LLM calls
+
+**Offline**: Works without internet
+
+**Consistency**: All users have same models, reproducible results
+
+**Control**: User chooses models and versions
+
+### Why GOAP for Agent?
+
+**Dynamic planning**: Adapts to current corpus state, not hardcoded rules
+
+**Cost-based selection**: Automatically chooses cheapest plan
+
+**Explainability**: Every action shows preconditions, cost, rationale
+
+**Reassessment**: Re-evaluates after each action (adaptive)
+
+---
+
+## Important Cross-Component Interfaces
+
+### MCP JSON-RPC Protocol
+
+**Request Format**:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "semantic_search",
+    "arguments": {
+      "query": "container networking",
+      "limit": 5,
+      "similarity_cutoff": 0.7
+    }
+  },
+  "id": 1
+}
+```
+
+**Response Format**:
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "notes": [
+      {
+        "file": "/path/to/note.org",
+        "title": "Docker Networking",
+        "similarity": 0.85,
+        "content": "..."
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+**Agent Integration**: `OrgRoamMcpClient.java` handles this protocol
+
+### Ollama HTTP API
+
+**Used by**:
+- org-roam-semantic (embeddings + generation)
+- Agent (LLM format analysis)
+
+**Embedding Request** (org-roam-semantic):
+```http
+POST http://localhost:11434/api/embeddings
+{
+  "model": "nomic-embed-text",
+  "prompt": "note content here..."
+}
+```
+
+**Chat Request** (Agent):
+```http
+POST http://localhost:11434/api/chat
+{
+  "model": "gpt-oss:20b",
+  "messages": [
+    {"role": "system", "content": "You are an org-mode expert..."},
+    {"role": "user", "content": "Analyze this file..."}
+  ]
+}
+```
+
+### Org File Format (Shared Understanding)
+
+**All components must respect**:
+```org
+:PROPERTIES:
+:ID: unique-id-12345
+:CREATED: [2025-10-21 Tue 10:00]
+:EMBEDDING: [0.123, -0.456, ...]  ; org-roam-semantic stores here
+:EMBEDDING_MODEL: nomic-embed-text
+:EMBEDDING_TIMESTAMP: [2025-10-21 Tue 10:05]
+:END:
+#+title: Note Title
+
+Content goes here...
+```
+
+**Rules**:
+- Agent reads/writes directly to filesystem
+- MCP reads/writes via Emacs (preserves Emacs state)
+- org-roam-semantic manages `:EMBEDDING:` properties
+- All must preserve `:PROPERTIES:` drawer structure
+
+---
+
+## Development Checklist
+
+**When adding cross-component features**:
+
+- [ ] Identify which component(s) are affected
+- [ ] Check if new MCP tool needed (Workflow 1)
+- [ ] Check if new Agent action needed (Workflow 2)
+- [ ] Update integration tests (see DEVELOPMENT.md)
+- [ ] Update ARCHITECTURE.md if data flow changes
+- [ ] Update component-specific CLAUDE.md files
+- [ ] Test full stack integration (all components running)
+- [ ] Document new integration patterns in this file
+
+**For component-specific work**:
+- [ ] Consult component CLAUDE.md (mcp/CLAUDE.md or agent/CLAUDE.md)
+- [ ] Follow component coding standards (see DEVELOPMENT.md)
+- [ ] Run component-specific tests
+- [ ] Update component README if user-facing changes
+
+**Git commits** (Conventional Commits):
 ```
 <type>(<scope>): <description>
 
-feat(emacs): add section-level chunking
-fix(mcp): handle character arrays in JSON
-docs(architecture): add integration diagrams
+feat(mcp): add search_by_tag tool
+fix(agent): handle missing embeddings gracefully
+docs(architecture): update integration diagrams
+chore(ci): add full stack integration test
 ```
 
-**Scopes**: `mcp`, `agent`, `docs`, `ci`
-
-## Performance Optimization
-
-**MCP**:
-- Keep Emacs server running (don't restart frequently)
-- Cache frequently accessed notes (future)
-
-**Agent**:
-- Cache format check results
-- Incremental audits for changed notes (future)
-- Parallel LLM calls where independent (future)
+**Scopes**: `mcp`, `agent`, `emacs`, `docs`, `ci`, `integration`
 
 ---
 
-# Key Technical Decisions
+## Quick Troubleshooting Guide
 
-## Why Store Embeddings in Org Files?
+| Symptom | Check | Fix |
+|---------|-------|-----|
+| MCP tools fail | Emacs server running? | `emacsclient --eval '(+ 1 1)'` |
+| Agent can't connect | MCP server running? | `curl http://localhost:8000` |
+| No semantic search | org-roam-semantic loaded? | Check Emacs `(featurep 'org-roam-semantic)` |
+| LLM errors | Ollama running? | `curl http://localhost:11434/api/tags` |
+| Missing embeddings | Model installed? | `ollama pull nomic-embed-text` |
+| Agent finds no notes | Path correct? | Check `ORG_ROAM_PATH` env var |
 
-- No external database required
-- Portable with notes
-- Git-trackable
-- Directly accessible to any tool
-
-## Why MCP Server Between Agent and Emacs?
-
-- Reuse proven org-roam-semantic integration
-- Separation of concerns (agent = planning, MCP = org-roam ops)
-- Language strengths (Java for GOAP, Python for Emacs integration)
-- No duplication of embedding logic
-
-## Why Ollama Instead of Cloud APIs?
-
-- Privacy (knowledge never leaves machine)
-- No API costs
-- Consistent models for all users
-- Offline capability
-- User control over models/versions
-
-## Why GOAP for Agent?
-
-- Dynamic planning based on current state
-- Cost-based action selection
-- Reassessment after each action (adaptive)
-- Explainable decisions (preconditions + effects)
+**For detailed troubleshooting**: See component-specific CLAUDE.md files and DEVELOPMENT.md
 
 ---
 
-# Important File Paths
+## Next Steps
 
-**MCP Server**:
-- Code: `mcp/src/org_roam_mcp/`
-- Tests: `mcp/tests/`
-- Config: `mcp/pyproject.toml`
+**New to the codebase?**
+1. Read [README.md](README.md) for user-facing overview
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for technical deep dive
+3. Choose component: [mcp/CLAUDE.md](mcp/CLAUDE.md) or [agent/CLAUDE.md](agent/CLAUDE.md)
+4. Follow [DEVELOPMENT.md](DEVELOPMENT.md) for setup
 
-**Agent**:
-- Code: `agent/src/main/java/com/dcruver/orgroam/`
-- Tests: `agent/src/test/java/`
-- Config: `agent/src/main/resources/application.yml`
-- Sample notes: `agent/samples/notes/`
+**Making changes?**
+1. Identify affected components (MCP, Agent, or both)
+2. Review relevant integration workflows above
+3. Consult component CLAUDE.md for implementation details
+4. Test integration points (MCP ↔ Emacs, Agent ↔ MCP)
+5. Update documentation (this file if integration changes)
 
-**Top-level Docs**:
-- [README.md](README.md) - User overview
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical deep dive
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Dev workflows
-
----
-
-**When working on this codebase**:
-1. Identify which component(s) are affected
-2. Review component-specific section above
-3. Check ARCHITECTURE.md for integration patterns
-4. Follow code style conventions for the language
-5. Run tests for affected components
-6. Update relevant documentation
-
-**For cross-component changes**:
-1. Consider impact on MCP and Agent layers
-2. Update integration docs in ARCHITECTURE.md
-3. Test full stack integration if possible
-4. Document new integration patterns
+**Common tasks**:
+- Add MCP tool → Workflow 1 above + [mcp/CLAUDE.md](mcp/CLAUDE.md)
+- Add Agent action → Workflow 2 above + [agent/CLAUDE.md](agent/CLAUDE.md)
+- Change models → Workflow 3 above
+- Debug issues → Workflow 4 above

@@ -9,6 +9,141 @@ org-roam-ai consists of three integrated components:
 2. **MCP server** (Python) - Needs packaging and remote access
 3. **Agent** (Java) - Needs distribution and service setup
 
+## Production Deployments
+
+This section documents **actual production deployments** currently running. For deployment strategies and installation options, see sections below.
+
+### org-roam-agent-backend (192.168.20.136)
+
+**Status**: ✅ Fully operational (deployed 2025-10-21)
+
+**Configuration**: Full stack (Emacs + MCP + Agent) on dedicated Proxmox LXC container
+
+**Components**:
+- **Emacs**: Doom Emacs with org-roam and org-roam-semantic
+  - Daemon running with socket at `/root/emacs-server/server`
+  - 149 notes in `/mnt/org-roam/files/` (shared volume)
+  - Config symlinked from `/mnt/org-roam/doom/`
+
+- **MCP Server**: Python wheel package installation
+  - Location: `/opt/org-roam-mcp-venv/`
+  - Service: `org-roam-mcp.service` (auto-start enabled)
+  - Port: 8000 (HTTP JSON-RPC)
+  - Version: 0.1.0 (commit 8651145)
+
+- **Agent**: Java JAR direct deployment
+  - Location: `/opt/org-roam-agent/embabel-note-gardener-0.1.0-SNAPSHOT.jar`
+  - Config: `/opt/org-roam-agent/application.yml`
+  - Service: `org-roam-agent-audit.timer` (nightly at 2 AM)
+  - Profile: dry-run (default)
+
+**External Dependencies**:
+- **Ollama**: `feynman.cruver.network:11434` (gpt-oss:20b, nomic-embed-text)
+- **Shared Volume**: `/external-storage/org-roam` → `/mnt/org-roam`
+
+**Service Management**:
+```bash
+# SSH to server
+ssh root@192.168.20.136
+
+# MCP Server
+systemctl status org-roam-mcp
+systemctl restart org-roam-mcp
+journalctl -u org-roam-mcp -f
+
+# Agent Timer (nightly audits)
+systemctl status org-roam-agent-audit.timer
+systemctl list-timers
+journalctl -u org-roam-agent-audit -f
+
+# Manual agent execution
+cd /opt/org-roam-agent
+export SPRING_CONFIG_LOCATION=file:./application.yml
+java -Dspring.shell.interactive.enabled=false \
+     -Dspring.shell.command.script.enabled=true \
+     -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar \
+     status  # or: audit, execute, apply safe
+```
+
+**Health Checks**:
+```bash
+# MCP Server
+curl http://192.168.20.136:8000  # Should return: OK
+
+# Emacs
+ssh root@192.168.20.136 "export EMACS_SERVER_FILE=/root/emacs-server/server && emacsclient --eval '(+ 1 1)'"
+
+# Ollama
+curl -s http://feynman.cruver.network:11434/api/tags | jq '.models[].name'
+```
+
+**Update Procedure**:
+```bash
+# MCP Server
+cd /home/dcruver/Projects/org-roam-ai/mcp
+python -m build
+scp dist/org_roam_mcp-0.1.0-py3-none-any.whl root@192.168.20.136:/tmp/
+ssh root@192.168.20.136 "/opt/org-roam-mcp-venv/bin/pip install --force-reinstall /tmp/org_roam_mcp-0.1.0-py3-none-any.whl && systemctl restart org-roam-mcp"
+
+# Agent
+cd /home/dcruver/Projects/org-roam-ai/agent
+./mvnw clean package -DskipTests
+scp target/embabel-note-gardener-0.1.0-SNAPSHOT.jar root@192.168.20.136:/opt/org-roam-agent/
+```
+
+**Documentation**: See `/tmp/agent_installation_summary.md` on the server for complete installation details.
+
+---
+
+### n8n-backend (n8n-backend.cruver.network)
+
+**Status**: ✅ Operational (MCP only, upgraded 2025-10-21)
+
+**Configuration**: MCP server only for n8n AI Agent integration
+
+**Components**:
+- **MCP Server**: Python wheel package installation
+  - Location: `/opt/org-roam-mcp-venv/`
+  - Service: `org-roam-mcp.service` (auto-start enabled)
+  - Port: 8000 (HTTP JSON-RPC)
+  - Version: 0.1.0 (commit 8651145)
+
+- **Emacs**: Doom Emacs with org-roam (existing installation)
+  - User: dcruver
+  - Socket: `/home/dcruver/emacs-server/server`
+  - Notes: `/home/dcruver/org-roam/`
+
+**Note**: No agent on this server - MCP server provides API access for n8n workflows only.
+
+**Service Management**:
+```bash
+# SSH to server
+ssh root@n8n-backend.cruver.network
+
+# MCP Server
+systemctl status org-roam-mcp
+systemctl restart org-roam-mcp
+journalctl -u org-roam-mcp -f
+```
+
+**Health Check**:
+```bash
+curl http://n8n-backend.cruver.network:8000  # Should return: OK
+```
+
+**Update Procedure**:
+```bash
+# Same as org-roam-agent-backend MCP update
+cd /home/dcruver/Projects/org-roam-ai/mcp
+python -m build
+scp dist/org_roam_mcp-0.1.0-py3-none-any.whl root@n8n-backend.cruver.network:/tmp/
+ssh root@n8n-backend.cruver.network "/opt/org-roam-mcp-venv/bin/pip install --force-reinstall /tmp/org_roam_mcp-0.1.0-py3-none-any.whl && systemctl restart org-roam-mcp"
+```
+
+**Documentation**: See `/tmp/mcp_agent_backend_summary.md` on org-roam-agent-backend for MCP installation details.
+
+---
+
 ## Deployment Strategies
 
 ### Strategy 1: Git + pip + systemd (Recommended for Single Server)

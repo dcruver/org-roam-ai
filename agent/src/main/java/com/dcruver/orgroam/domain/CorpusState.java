@@ -30,6 +30,19 @@ public class CorpusState {
     // Mean health score across corpus
     private final double meanHealthScore;
 
+    // Structure optimization tracking
+    private final int notesWithMultipleTopics;
+    private final int notesTooSmall;
+    private final int notesTooLarge;
+    private final int splitCandidates;
+    private final int mergeCandidates;
+    private final double meanCoherence;
+    private final double meanTokenCount;
+
+    // Split/merge candidate details
+    private final Map<String, StructureAnalysis> structureAnalyses;  // noteId -> analysis
+    private final Map<String, List<String>> mergeGroups;  // noteId -> similar note IDs
+
     /**
      * Get note by ID
      */

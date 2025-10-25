@@ -1,5 +1,7 @@
 package com.dcruver.orgroam.io;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
@@ -27,6 +29,30 @@ public class ChangeProposal {
 
     // The actual patch content
     private final String patchContent;
+
+    @JsonCreator
+    public ChangeProposal(
+            @JsonProperty("id") String id,
+            @JsonProperty("noteId") String noteId,
+            @JsonProperty("filePath") String filePath,
+            @JsonProperty("actionName") String actionName,
+            @JsonProperty("rationale") String rationale,
+            @JsonProperty("proposedAt") Instant proposedAt,
+            @JsonProperty("status") ProposalStatus status,
+            @JsonProperty("beforeStats") Map<String, Object> beforeStats,
+            @JsonProperty("afterStats") Map<String, Object> afterStats,
+            @JsonProperty("patchContent") String patchContent) {
+        this.id = id;
+        this.noteId = noteId;
+        this.filePath = filePath;
+        this.actionName = actionName;
+        this.rationale = rationale;
+        this.proposedAt = proposedAt;
+        this.status = status;
+        this.beforeStats = beforeStats;
+        this.afterStats = afterStats;
+        this.patchContent = patchContent;
+    }
 
     public enum ProposalStatus {
         PENDING,

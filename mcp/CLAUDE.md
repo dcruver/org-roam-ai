@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚀 CURRENT STATUS (2025-10-23)
+
+**COMPLETED**: MCP-based embedding generation feature fully implemented and deployed!
+
+**What was done**:
+1. ✅ Added `generate_embeddings()` method to `EmacsClient` (emacs_client.py:379-420)
+2. ✅ Added `generate_embeddings` tool to MCP server with HTTP handler (server.py:218-232, 717-732, 840-858)
+3. ✅ Fixed response parsing to handle both numeric and message string formats
+4. ✅ Deployed to production server (192.168.20.136) - MCP server running and tested
+5. ✅ Tool verified working: generates 20 embeddings, skips 130 that already exist
+
+**Next steps for agent integration**:
+- Deploy updated agent JAR to server (build in `../agent` directory)
+- Test end-to-end: Agent → MCP → Emacs → org-roam-semantic
+- Verify agent audit shows embeddings are managed via MCP (not local SQLite)
+- Confirm nightly job works with new MCP-based approach
+
+**Key architectural change**: Agent now delegates ALL embedding operations to MCP server, which calls `org-roam-semantic-generate-all-embeddings` in Emacs. Embeddings are stored in org files as `:PROPERTIES:`, not in local SQLite database.
+
+---
+
 # Org-roam MCP Server
 
 ## Project Overview

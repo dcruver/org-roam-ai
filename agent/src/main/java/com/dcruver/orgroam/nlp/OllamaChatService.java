@@ -161,6 +161,60 @@ public class OllamaChatService {
     }
 
     /**
+     * Analyze note structure for split/merge optimization.
+     * Returns JSON response that can be parsed into StructureAnalysis.
+     */
+    public String analyzeNoteStructure(String noteContent) {
+        String systemMessage = """
+            You are an expert at analyzing knowledge base note structure for optimal semantic search.
+
+            Analyze the provided org-roam note and return a JSON response with the following structure:
+            {
+              "topics": ["topic1", "topic2", ...],
+              "coherence": 0.85,
+              "tokenCount": 650,
+              "optimalSize": true,
+              "tooSmall": false,
+              "tooLarge": false,
+              "splitPoints": [
+                {
+                  "characterOffset": 450,
+                  "beforeHeading": "Docker Basics",
+                  "afterHeading": "Kubernetes Overview",
+                  "rationale": "Distinct shift from Docker to Kubernetes topic",
+                  "confidence": 0.9
+                }
+              ],
+              "recommendation": "Split this note - it covers two distinct topics that would benefit from separation"
+            }
+
+            Guidelines:
+            - Optimal size is 300-800 tokens
+            - Coherence: 1.0 = single focused topic, 0.0 = completely scattered
+            - Only suggest split points if multiple distinct topics exist
+            - Topics should be semantic clusters, not just sections
+            - Split points should be at natural boundaries (heading changes, topic shifts)
+
+            Return ONLY the JSON, no explanations.
+            """;
+
+        String userMessage = String.format("Analyze this org-roam note:\n\n%s", noteContent);
+
+        return chat(systemMessage, userMessage);
+    }
+
+    /**
+     * Estimate token count for a piece of text
+     * Simple approximation: ~4 chars per token for English
+     */
+    public int estimateTokenCount(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        return text.length() / 4;
+    }
+
+    /**
      * Truncate text to max length with ellipsis
      */
     private String truncate(String text, int maxLength) {

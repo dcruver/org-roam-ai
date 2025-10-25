@@ -55,6 +55,21 @@ public class NoteMetadata {
     // Computed health score (0-100)
     private final int healthScore;
 
+    // Structure analysis (from LLM)
+    private final StructureAnalysis structureAnalysis;
+    private final boolean hasMultipleTopics;
+    private final List<String> detectedTopics;
+    private final List<SplitPoint> suggestedSplitPoints;
+    private final double internalCoherence;  // 0.0-1.0
+
+    // Token count and size categorization
+    private final int tokenCount;
+    private final boolean tooSmall;  // < 300 tokens
+    private final boolean tooLarge;  // > 800 tokens
+
+    // Merge candidates (from semantic search)
+    private final List<String> semanticallySimilarNoteIds;
+
     /**
      * Check if embeddings are fresh based on max age in days
      */

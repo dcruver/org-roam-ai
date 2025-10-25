@@ -1,6 +1,7 @@
 package com.dcruver.orgroam.domain.planning;
 
 import com.dcruver.orgroam.domain.CorpusState;
+import com.dcruver.orgroam.domain.actions.AnalyzeNoteStructureAction;
 import com.dcruver.orgroam.domain.actions.ComputeEmbeddingsAction;
 import com.dcruver.orgroam.domain.actions.NormalizeFormattingAction;
 import com.dcruver.orgroam.domain.actions.SuggestLinksAction;
@@ -22,6 +23,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GOAPPlanner {
 
+    private final AnalyzeNoteStructureAction analyzeNoteStructureAction;
     private final ComputeEmbeddingsAction computeEmbeddingsAction;
     private final NormalizeFormattingAction normalizeFormattingAction;
     private final SuggestLinksAction suggestLinksAction;
@@ -41,10 +43,13 @@ public class GOAPPlanner {
         double totalCost = 0.0;
 
         // List of all available actions
+        // NOTE: Order matters for imperative planning
+        // AnalyzeNoteStructure runs FIRST to discover split/merge candidates
         List<Action<CorpusState>> availableActions = List.of(
-            normalizeFormattingAction,  // Highest priority - fixes basic structure
-            computeEmbeddingsAction,    // Next - enables semantic search
-            suggestLinksAction          // Last - requires embeddings
+            analyzeNoteStructureAction,  // FIRST - discovers split/merge candidates
+            normalizeFormattingAction,   // Fix basic formatting
+            computeEmbeddingsAction,     // Enable semantic search
+            suggestLinksAction           // Last - requires embeddings
         );
 
         // Evaluate each action
@@ -94,10 +99,12 @@ public class GOAPPlanner {
      * Check if an action is safe (auto-applicable)
      */
     private boolean isSafeAction(Action<CorpusState> action) {
-        // Safe actions: ComputeEmbeddings, NormalizeFormatting
+        // Safe actions: AnalyzeNoteStructure (discovery only), ComputeEmbeddings, NormalizeFormatting
         // Proposal actions: SuggestLinks
         String name = action.getName();
-        return name.equals("ComputeEmbeddings") || name.equals("NormalizeFormatting");
+        return name.equals("AnalyzeNoteStructure") ||
+               name.equals("ComputeEmbeddings") ||
+               name.equals("NormalizeFormatting");
     }
 
     /**
@@ -105,6 +112,9 @@ public class GOAPPlanner {
      */
     private String generateRationale(Action<CorpusState> action, CorpusState state) {
         return switch (action.getName()) {
+            case "AnalyzeNoteStructure" -> {
+                yield String.format("Analyze %d notes to discover split/merge candidates", state.getTotalNotes());
+            }
             case "ComputeEmbeddings" -> {
                 int needsEmbeddings = state.getNotesNeedingEmbeddings();
                 yield String.format("Compute embeddings for %d notes (missing or stale)", needsEmbeddings);
@@ -126,6 +136,7 @@ public class GOAPPlanner {
      */
     private int estimateAffectedNotes(Action<CorpusState> action, CorpusState state) {
         return switch (action.getName()) {
+            case "AnalyzeNoteStructure" -> state.getTotalNotes();  // Analyzes all notes
             case "ComputeEmbeddings" -> state.getNotesNeedingEmbeddings();
             case "NormalizeFormatting" -> state.getNotesWithFormatIssues();
             case "SuggestLinks" -> state.getOrphanNotes();

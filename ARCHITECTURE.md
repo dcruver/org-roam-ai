@@ -229,28 +229,39 @@ The MCP server supports two transport modes:
 3. **Language strengths**: Java for GOAP, Python for Emacs integration
 4. **No duplication**: Avoid reimplementing embedding queries
 
-**MCP Client** (planned: `OrgRoamMcpClient.java`)
+**MCP Client** (`OrgRoamMcpClient.java` - ✅ Implemented)
 ```java
-// Check embedding status
-POST http://localhost:8000
-{
-  "method": "tools/call",
-  "params": {
-    "name": "semantic_search",
-    "arguments": {"query": "note content", "limit": 5}
+// HTTP JSON-RPC client for MCP server
+@Service
+public class OrgRoamMcpClient {
+  // Semantic search via MCP
+  POST http://localhost:8000
+  {
+    "method": "tools/call",
+    "params": {
+      "name": "semantic_search",
+      "arguments": {"query": "note content", "limit": 5}
+    }
   }
-}
 
-// Get similar notes for linking
-Response: {
-  "result": {
-    "notes": [
-      {"file": "abc.org", "title": "...", "similarity": 0.85},
-      ...
-    ]
+  // Response with similar notes
+  Response: {
+    "result": {
+      "notes": [
+        {"file": "abc.org", "title": "...", "similarity": 0.85},
+        ...
+      ]
+    }
   }
 }
 ```
+
+**Implementation Status**: ✅ Fully working
+- HTTP client with configurable base URL and timeout
+- Semantic search for link suggestions
+- Contextual search with full note content
+- Server health checking and availability detection
+- Used by `SuggestLinks` action
 
 #### Health Score Calculation
 
@@ -520,6 +531,197 @@ spring:
 **Emacs**: LLM format fixing via AI assistant
 **MCP**: Returns parse error to caller
 **Agent**: `NormalizeFormattingAction` fixes via LLM, creates backup
+
+---
+
+## Production Deployment Architecture
+
+### Deployment Pattern: Dedicated Agent Server
+
+The recommended production deployment uses a **dedicated LXC container** for the full org-roam-ai stack, separate from n8n or other services.
+
+#### org-roam-agent-backend (192.168.20.136)
+
+**Full Stack Deployment** on dedicated Proxmox LXC container:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│          org-roam-agent-backend (192.168.20.136)            │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Agent (Java + Spring Boot + Embabel GOAP)            │  │
+│  │ • Location: /opt/org-roam-agent/                    │  │
+│  │ • JAR: embabel-note-gardener-0.1.0-SNAPSHOT.jar      │  │
+│  │ • Config: application.yml                            │  │
+│  │ • Systemd: org-roam-agent-audit.timer (2 AM daily)   │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │ HTTP calls                            │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ MCP Server (Python HTTP)                             │  │
+│  │ • Location: /opt/org-roam-mcp-venv/                 │  │
+│  │ • Port: 8000                                         │  │
+│  │ • Service: org-roam-mcp.service                      │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │ emacsclient                           │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Emacs + Doom + org-roam + org-roam-semantic          │  │
+│  │ • Socket: /root/emacs-server/server                  │  │
+│  │ • Notes: /mnt/org-roam/files/ (shared volume)       │  │
+│  │ • Config: /mnt/org-roam/doom/ (shared)              │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+         │                                      │
+         │ Ollama API                          │ Notes volume
+         ▼                                      ▼
+feynman.cruver.network:11434        /external-storage/org-roam
+```
+
+**Key Configuration**:
+- **Ollama**: Remote instance on `feynman.cruver.network:11434`
+- **Shared Volume**: `/external-storage/org-roam` mounted at `/mnt/org-roam`
+  - Notes: `/mnt/org-roam/files/`
+  - Doom config: `/mnt/org-roam/doom/`
+- **Environment**: `EMACS_SERVER_FILE=/root/emacs-server/server`
+- **Profile**: `dry-run` (default, requires user approval for changes)
+
+**Service Management**:
+```bash
+# MCP Server
+systemctl status org-roam-mcp
+journalctl -u org-roam-mcp -f
+
+# Agent (nightly audits via timer)
+systemctl status org-roam-agent-audit.timer
+systemctl list-timers
+journalctl -u org-roam-agent-audit -f
+
+# Manual agent execution
+cd /opt/org-roam-agent
+java -Dspring.shell.interactive.enabled=false \
+     -Dspring.shell.command.script.enabled=true \
+     -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar \
+     status  # or audit, execute, etc.
+```
+
+#### n8n-backend (n8n-backend.cruver.network)
+
+**MCP Server Only** for n8n AI Agent integration:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│          n8n-backend.cruver.network                          │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ n8n Workflows                                         │  │
+│  │ • AI Agent nodes                                      │  │
+│  │ • Chatbot integrations                               │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │ HTTP JSON-RPC                         │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ MCP Server (Python HTTP)                             │  │
+│  │ • Location: /opt/org-roam-mcp-venv/                 │  │
+│  │ • Port: 8000                                         │  │
+│  │ • Service: org-roam-mcp.service                      │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │ emacsclient                           │
+│                     ▼                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Emacs + Doom + org-roam + org-roam-semantic          │  │
+│  │ • Socket: /home/dcruver/emacs-server/server          │  │
+│  │ • Notes: /home/dcruver/org-roam/                     │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Configuration**:
+- **Purpose**: API access for n8n workflows only (no agent)
+- **User**: Runs as root but connects to dcruver's Emacs server
+- **Environment**: `EMACS_SERVER_FILE=/home/dcruver/emacs-server/server`
+
+### Deployment Decisions
+
+**Why Dedicated Container for Agent?**
+- **Isolation**: Agent, MCP, and Emacs run independently from n8n
+- **Performance**: No resource contention with n8n workloads
+- **Independence**: Full stack operates without network dependencies
+- **Maintenance**: Separate update cycles for different services
+
+**Why Local MCP on Agent Server?**
+- **Speed**: Direct emacsclient calls, no network latency
+- **Reliability**: No network dependency for core operations
+- **Simplicity**: All components on same machine
+
+**Why Remote Ollama (feynman)?**
+- **Centralization**: Single Ollama instance for all services
+- **Resources**: feynman has better CPU/GPU for LLM inference
+- **Flexibility**: Easy to scale or change models centrally
+- **Consistency**: All deployments use same models
+
+**Why Shared Volume for Notes?**
+- **Consistency**: Same notes accessible from multiple Emacs instances
+- **Backup**: Centralized backup strategy for notes
+- **Flexibility**: Can add more containers accessing same notes
+
+### Installation Methods
+
+**Package-Based (Recommended)**:
+- MCP: Python wheel package installed in dedicated venv
+- Agent: JAR file copied directly to server
+- No git repositories on production servers
+- Clean, minimal installation footprint
+
+**Update Procedure**:
+```bash
+# MCP Server Update
+# Build wheel locally
+cd /home/dcruver/Projects/org-roam-ai/mcp
+python -m build
+scp dist/org_roam_mcp-0.1.0-py3-none-any.whl root@192.168.20.136:/tmp/
+ssh root@192.168.20.136 "
+  /opt/org-roam-mcp-venv/bin/pip install --force-reinstall /tmp/org_roam_mcp-0.1.0-py3-none-any.whl
+  systemctl restart org-roam-mcp
+"
+
+# Agent Update
+cd /home/dcruver/Projects/org-roam-ai/agent
+./mvnw clean package -DskipTests
+scp target/embabel-note-gardener-0.1.0-SNAPSHOT.jar root@192.168.20.136:/opt/org-roam-agent/
+```
+
+### Monitoring and Maintenance
+
+**Health Checks**:
+```bash
+# Verify MCP Server
+curl http://192.168.20.136:8000  # Should return: OK
+
+# Verify Ollama Connection
+curl -s http://feynman.cruver.network:11434/api/tags | jq '.models[].name'
+
+# Verify Emacs Integration
+ssh root@192.168.20.136 "export EMACS_SERVER_FILE=/root/emacs-server/server && emacsclient --eval '(+ 1 1)'"
+```
+
+**Scheduled Audits**:
+```bash
+# Enable nightly audits at 2 AM
+systemctl enable org-roam-agent-audit.timer
+systemctl start org-roam-agent-audit.timer
+systemctl list-timers  # Verify timer is active
+```
+
+**Log Monitoring**:
+```bash
+# MCP Server
+ssh root@192.168.20.136 "journalctl -u org-roam-mcp -f"
+
+# Agent Audits
+ssh root@192.168.20.136 "journalctl -u org-roam-agent-audit -f"
+```
 
 ---
 

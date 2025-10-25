@@ -140,6 +140,127 @@ public class OrgRoamMcpClient {
     }
 
     /**
+     * Add entry to daily note.
+     *
+     * @param timestamp Entry timestamp in HH:MM format
+     * @param title Entry title
+     * @param points Main points or content items
+     * @param nextSteps Next steps or action items
+     * @param tags Tags for the entry
+     * @return Success status
+     */
+    public boolean addDailyEntry(String timestamp, String title, List<String> points,
+                                  List<String> nextSteps, List<String> tags) {
+        try {
+            McpRequest request = McpRequest.builder()
+                .jsonrpc("2.0")
+                .id(1)
+                .method("tools/call")
+                .params(Map.of(
+                    "name", "add_daily_entry",
+                    "arguments", Map.of(
+                        "timestamp", timestamp,
+                        "title", title,
+                        "points", points,
+                        "next_steps", nextSteps != null ? nextSteps : List.of(),
+                        "tags", tags != null ? tags : List.of()
+                    )
+                ))
+                .build();
+
+            String responseBody = sendRequest(request);
+            McpResponse<Map<String, Object>> response = objectMapper.readValue(
+                responseBody,
+                objectMapper.getTypeFactory().constructParametricType(
+                    McpResponse.class,
+                    objectMapper.getTypeFactory().constructType(Map.class)
+                )
+            );
+
+            if (response.getError() != null) {
+                log.error("MCP add daily entry error: {}", response.getError());
+                return false;
+            }
+
+            log.info("Added entry to daily note: {}", title);
+            return true;
+
+        } catch (Exception e) {
+            log.error("Failed to add daily entry via MCP", e);
+            return false;
+        }
+    }
+
+    /**
+     * Generate embeddings for org-roam notes using org-roam-semantic.
+     *
+     * @param force Regenerate embeddings even for notes that already have them
+     * @return Result with count of embeddings generated
+     */
+    public GenerateEmbeddingsResult generateEmbeddings(boolean force) {
+        try {
+            McpRequest request = McpRequest.builder()
+                .jsonrpc("2.0")
+                .id(1)
+                .method("tools/call")
+                .params(Map.of(
+                    "name", "generate_embeddings",
+                    "arguments", Map.of(
+                        "force", force
+                    )
+                ))
+                .build();
+
+            String responseBody = sendRequest(request);
+            McpResponse<Map<String, Object>> response = objectMapper.readValue(
+                responseBody,
+                objectMapper.getTypeFactory().constructParametricType(
+                    McpResponse.class,
+                    objectMapper.getTypeFactory().constructType(Map.class)
+                )
+            );
+
+            if (response.getError() != null) {
+                log.error("MCP generate embeddings error: {}", response.getError());
+                return new GenerateEmbeddingsResult(false, 0, "Error: " + response.getError().getMessage());
+            }
+
+            // Parse the count from the response (it's embedded in the text response)
+            Map<String, Object> result = response.getResult();
+            Object contentObj = result.get("content");
+            if (contentObj instanceof List) {
+                List<?> contentList = (List<?>) contentObj;
+                if (!contentList.isEmpty() && contentList.get(0) instanceof Map) {
+                    Map<?, ?> textContent = (Map<?, ?>) contentList.get(0);
+                    String text = (String) textContent.get("text");
+
+                    // Extract count from text like "✅ Generated 25 embeddings for org-roam notes"
+                    int count = 0;
+                    if (text != null && text.contains("Generated")) {
+                        String[] parts = text.split("Generated")[1].split("embeddings");
+                        if (parts.length > 0) {
+                            try {
+                                count = Integer.parseInt(parts[0].trim());
+                            } catch (NumberFormatException e) {
+                                log.warn("Could not parse embedding count from response: {}", text);
+                            }
+                        }
+                    }
+
+                    log.info("Generated {} embeddings via MCP", count);
+                    return new GenerateEmbeddingsResult(true, count, text);
+                }
+            }
+
+            return new GenerateEmbeddingsResult(true, 0, "Embeddings generated successfully");
+
+        } catch (Exception e) {
+            log.error("Failed to generate embeddings via MCP", e);
+            return new GenerateEmbeddingsResult(false, 0, "Exception: " + e.getMessage());
+        }
+    }
+
+    /**
      * Check if MCP server is available.
      */
     public boolean isAvailable() {
@@ -237,6 +358,33 @@ public class OrgRoamMcpClient {
         private List<String> backlinks;
         @JsonProperty("node_id")
         private String nodeId;
+    }
+
+    /**
+     * Result from generate_embeddings operation.
+     */
+    public static class GenerateEmbeddingsResult {
+        private final boolean success;
+        private final int count;
+        private final String message;
+
+        public GenerateEmbeddingsResult(boolean success, int count, String message) {
+            this.success = success;
+            this.count = count;
+            this.message = message;
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public int getCount() {
+            return count;
+        }
+
+        public String getMessage() {
+            return message;
+        }
     }
 
     /**

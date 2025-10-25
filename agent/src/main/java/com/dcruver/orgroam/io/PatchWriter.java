@@ -136,6 +136,55 @@ public class PatchWriter {
     }
 
     /**
+     * Check if a pending proposal already exists for a note and action.
+     * This prevents duplicate proposals from being created.
+     */
+    public boolean hasExistingProposal(String noteId, String actionName) {
+        try {
+            if (!Files.exists(proposalsDir)) {
+                log.debug("Proposals directory does not exist: {}", proposalsDir);
+                return false;
+            }
+
+            try (var stream = Files.list(proposalsDir)) {
+                boolean exists = stream
+                    .filter(p -> p.toString().endsWith(".json"))
+                    .filter(p -> {
+                        String filename = p.getFileName().toString();
+                        boolean matches = filename.startsWith(noteId + "-");
+                        if (matches) {
+                            log.debug("Found proposal file for note {}: {}", noteId, filename);
+                        }
+                        return matches;
+                    })
+                    .anyMatch(p -> {
+                        try {
+                            ChangeProposal proposal = objectMapper.readValue(p.toFile(), ChangeProposal.class);
+                            boolean isPending = proposal != null
+                                && proposal.getStatus() == ProposalStatus.PENDING
+                                && proposal.getActionName().equals(actionName);
+                            if (isPending) {
+                                log.info("Found existing pending {} proposal for note {}", actionName, noteId);
+                            }
+                            return isPending;
+                        } catch (IOException e) {
+                            log.debug("Failed to read proposal file: {}", p, e);
+                            return false;
+                        }
+                    });
+
+                if (!exists) {
+                    log.debug("No existing {} proposal found for note {}", actionName, noteId);
+                }
+                return exists;
+            }
+        } catch (IOException e) {
+            log.error("Error checking for existing proposals for note {}", noteId, e);
+            return false;
+        }
+    }
+
+    /**
      * List all pending proposals
      */
     public List<ChangeProposal> listProposals() throws IOException {

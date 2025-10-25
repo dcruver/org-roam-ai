@@ -4,13 +4,18 @@ import com.dcruver.orgroam.domain.CorpusState;
 import com.dcruver.orgroam.domain.actions.ComputeEmbeddingsAction;
 import com.dcruver.orgroam.domain.actions.NormalizeFormattingAction;
 import com.dcruver.orgroam.domain.actions.SuggestLinksAction;
+import com.dcruver.orgroam.nlp.OrgRoamMcpClient;
 import com.embabel.agent.core.action.Action;
 import com.embabel.agent.core.action.ActionResult;
 import lombok.Builder;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +32,9 @@ public class ActionExecutor {
     private final ComputeEmbeddingsAction computeEmbeddingsAction;
     private final NormalizeFormattingAction normalizeFormattingAction;
     private final SuggestLinksAction suggestLinksAction;
+
+    @Autowired(required = false)
+    private OrgRoamMcpClient mcpClient;
 
     /**
      * Execute all actions in the plan.
@@ -121,13 +129,77 @@ public class ActionExecutor {
         log.info("Plan execution completed: {} succeeded, {} failed, {} skipped",
             successCount, failureCount, skippedCount);
 
-        return ExecutionResult.builder()
+        ExecutionResult result = ExecutionResult.builder()
             .executions(executions)
             .finalState(currentState)
             .successCount(successCount)
             .failureCount(failureCount)
             .skippedCount(skippedCount)
             .build();
+
+        // Write summary to daily note
+        writeDailyReport(result, plan);
+
+        return result;
+    }
+
+    /**
+     * Write execution summary to today's daily note via MCP.
+     */
+    private void writeDailyReport(ExecutionResult result, ActionPlan plan) {
+        if (mcpClient == null || !mcpClient.isAvailable()) {
+            log.debug("MCP not available - skipping daily report");
+            return;
+        }
+
+        try {
+            // Format timestamp
+            String timestamp = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+
+            // Build summary points
+            List<String> points = new ArrayList<>();
+            points.add(String.format("Executed %d actions: %d succeeded, %d failed, %d skipped",
+                plan.getActions().size(), result.getSuccessCount(), result.getFailureCount(), result.getSkippedCount()));
+
+            // Add details for each action
+            for (ActionExecution exec : result.getExecutions()) {
+                String status = exec.isSuccess() ? "✓" : "✗";
+                points.add(String.format("%s %s: %s", status, exec.getActionName(), exec.getMessage()));
+            }
+
+            // Health improvement
+            if (result.getFinalState() != null) {
+                points.add(String.format("Final corpus health: %.1f/90", result.getFinalState().getMeanHealthScore()));
+            }
+
+            // Next steps (if any failures or proposals)
+            List<String> nextSteps = new ArrayList<>();
+            if (result.getFailureCount() > 0) {
+                nextSteps.add("Review failed actions in agent logs");
+            }
+            long proposalCount = plan.getActions().stream().filter(a -> !a.isSafe()).count();
+            if (proposalCount > 0) {
+                nextSteps.add(String.format("Review %d pending proposals", proposalCount));
+            }
+
+            // Write to daily note
+            boolean success = mcpClient.addDailyEntry(
+                timestamp,
+                "org-roam-agent: Nightly Audit Complete",
+                points,
+                nextSteps.isEmpty() ? null : nextSteps,
+                List.of("agent", "automated")
+            );
+
+            if (success) {
+                log.info("Audit summary written to daily note");
+            } else {
+                log.warn("Failed to write audit summary to daily note");
+            }
+
+        } catch (Exception e) {
+            log.error("Error writing daily report", e);
+        }
     }
 
     /**
