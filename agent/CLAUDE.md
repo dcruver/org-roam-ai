@@ -2,6 +2,50 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚀 CURRENT STATUS (2025-10-23)
+
+**COMPLETED**: MCP-based embedding generation integration implemented!
+
+**What was done**:
+1. ✅ Added `generateEmbeddings()` method to `OrgRoamMcpClient.java` (lines 200-261)
+2. ✅ Added `GenerateEmbeddingsResult` DTO class (lines 366-388)
+3. ✅ Updated `ComputeEmbeddingsAction.java` to call MCP instead of local SQLite (lines 64-118)
+4. ✅ Removed local embedding generation using `OllamaEmbeddingService` and `EmbeddingStore`
+5. ✅ Built JAR: `target/embabel-note-gardener-0.1.0-SNAPSHOT.jar` (87MB)
+
+**PENDING DEPLOYMENT**:
+- ❌ Agent JAR NOT YET deployed to production server (192.168.20.136)
+- The old JAR on the server still uses local SQLite for embeddings
+- MCP server IS deployed and working (verified with direct HTTP test)
+
+**Next steps to complete**:
+```bash
+# 1. Deploy agent JAR to server
+cd /home/dcruver/Projects/org-roam-ai/agent
+./mvnw clean package -DskipTests
+scp target/embabel-note-gardener-0.1.0-SNAPSHOT.jar root@192.168.20.136:/opt/org-roam-agent/
+
+# 2. Test agent with MCP integration
+ssh root@192.168.20.136 "cd /opt/org-roam-agent && java -Dspring.shell.interactive.enabled=false -Dspring.shell.command.script.enabled=true -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar status"
+
+# 3. Verify embeddings delegated to MCP (check logs for MCP calls, not local generation)
+ssh root@192.168.20.136 "journalctl -u org-roam-agent-audit -n 100 | grep -i 'embedding\|mcp'"
+
+# 4. Confirm nightly job works
+ssh root@192.168.20.136 "systemctl status org-roam-agent-audit.timer"
+```
+
+**Key architectural change**:
+- **BEFORE**: Agent generated embeddings locally using `OllamaEmbeddingService` and stored in `~/.gardener/embeddings.db`
+- **AFTER**: Agent calls `OrgRoamMcpClient.generateEmbeddings()` → MCP server → Emacs `org-roam-semantic-generate-all-embeddings`
+- Embeddings now stored in org files as `:PROPERTIES:`, managed by org-roam-semantic
+
+**Files modified**:
+- `src/main/java/com/dcruver/orgroam/nlp/OrgRoamMcpClient.java` - Added generateEmbeddings method
+- `src/main/java/com/dcruver/orgroam/domain/actions/ComputeEmbeddingsAction.java` - Updated to use MCP
+
+---
+
 ## Project Overview
 
 This is a production-ready Embabel (GOAP - Goal-Oriented Action Planning) agent service built with Spring Boot, Spring Shell, and Java 21+. The service maintains a local Org/Org-roam knowledge base by auditing and fixing issues related to formatting, links, taxonomy, and staleness. All edits are explainable, reversible, and safe by default.
@@ -641,29 +685,94 @@ ollama pull nomic-embed-text:latest
 - Check that `OllamaChatService` and `OllamaEmbeddingService` beans are being created
 - Look for WARN messages about missing `ChatModel` or `EmbeddingModel` beans
 
-## Deployment on Proxmox
+## Production Deployment
 
-The application runs as an executable JAR on Proxmox server:
+### org-roam-agent-backend (192.168.20.136)
 
-```bash
-# Deploy
-scp target/embabel-note-gardener-*.jar proxmox-server:/opt/org-roam-agent/
+**Status**: ✅ Fully operational (deployed 2025-10-21)
 
-# Run as service or in screen/tmux session
-java -jar /opt/org-roam-agent/embabel-note-gardener-*.jar
+**Configuration**: Full stack deployment on dedicated Proxmox LXC container
+
+**Components**:
+- JAR: `/opt/org-roam-agent/embabel-note-gardener-0.1.0-SNAPSHOT.jar` (87MB)
+- Config: `/opt/org-roam-agent/application.yml`
+- Timer: `org-roam-agent-audit.timer` (nightly at 2 AM)
+- Profile: `dry-run` (default - requires approval for changes)
+
+**Key Configuration Differences**:
+```yaml
+spring:
+  ai:
+    ollama:
+      base-url: http://feynman.cruver.network:11434  # Remote Ollama!
+
+gardener:
+  notes-path: /mnt/org-roam/files  # Shared volume
+  mcp:
+    enabled: true
+    base-url: http://localhost:8000  # Local MCP server
 ```
 
-**Prerequisites**:
-- Ollama installed and running on Proxmox (or accessible via network)
-- Models pulled: `ollama pull gpt-oss:20b` and `ollama pull nomic-embed-text:latest`
-- Org-roam directory accessible to the application
+**Deployment Commands**:
+```bash
+# Build locally
+./mvnw clean package -DskipTests
 
-Consider:
-- Systemd service file for auto-start
-- Log rotation for application logs
-- Mounting org-roam directory appropriately
-- Configuration file location via `--spring.config.location`
-- Ollama base-url configuration if not running on localhost
+# Deploy to server
+scp target/embabel-note-gardener-0.1.0-SNAPSHOT.jar root@192.168.20.136:/opt/org-roam-agent/
+
+# Manual execution (non-interactive)
+ssh root@192.168.20.136 "cd /opt/org-roam-agent && \
+  export SPRING_CONFIG_LOCATION=file:./application.yml && \
+  java -Dspring.shell.interactive.enabled=false \
+       -Dspring.shell.command.script.enabled=true \
+       -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar \
+       status"
+
+# Service management
+ssh root@192.168.20.136 "systemctl status org-roam-agent-audit.timer"
+ssh root@192.168.20.136 "systemctl list-timers"
+ssh root@192.168.20.136 "journalctl -u org-roam-agent-audit -f"
+```
+
+**Health Checks**:
+```bash
+# Verify Ollama (remote)
+curl -s http://feynman.cruver.network:11434/api/tags | jq '.models[].name'
+
+# Verify MCP (local)
+ssh root@192.168.20.136 "curl http://localhost:8000"
+
+# Verify Emacs
+ssh root@192.168.20.136 "export EMACS_SERVER_FILE=/root/emacs-server/server && emacsclient --eval '(+ 1 1)'"
+
+# Test agent status
+ssh root@192.168.20.136 "cd /opt/org-roam-agent && timeout 60 java -Dspring.shell.interactive.enabled=false -Dspring.shell.command.script.enabled=true -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar status 2>&1 | grep -i 'scanning corpus'"
+```
+
+**Architecture Notes**:
+- **Remote Ollama**: Uses `feynman.cruver.network:11434` instead of localhost
+- **Shared Volume**: Notes at `/mnt/org-roam/files` from Proxmox host `/external-storage/org-roam`
+- **Local MCP**: MCP server runs on same container for minimal latency
+- **Timer-based**: Uses systemd timer for nightly audits rather than persistent service
+
+**Systemd Services**:
+```ini
+# /etc/systemd/system/org-roam-agent-audit.service (oneshot)
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/org-roam-agent
+Environment="SPRING_CONFIG_LOCATION=file:/opt/org-roam-agent/application.yml"
+ExecStart=/usr/bin/java -Dspring.shell.interactive.enabled=false -Dspring.shell.command.script.enabled=true -jar embabel-note-gardener-0.1.0-SNAPSHOT.jar audit
+
+# /etc/systemd/system/org-roam-agent-audit.timer
+[Timer]
+OnCalendar=daily
+OnCalendar=02:00
+Persistent=true
+```
+
+**Documentation**: See `/tmp/agent_installation_summary.md` on server for complete details
 
 ## Key Design Principles
 

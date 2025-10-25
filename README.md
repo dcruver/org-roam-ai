@@ -172,6 +172,7 @@ starwars> audit
 - [MCP Server Setup](mcp/README.md) - API integration
 - [Agent Setup](agent/README.md) - Automated maintenance
 - [Server Installation](INSTALLATION.md) - Complete stack setup
+- [Production Deployments](DEPLOYMENT.md#production-deployments) - Live production configurations
 
 ### Architecture & Development
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Deep dive into system design

@@ -72,6 +72,12 @@ gardener:
   # Ollama embedding model
   embedding-model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text:latest}
 
+  # Cache directory for persistent caches
+  cache-dir: ${user.home}/.gardener/cache
+
+  # Format check cache (LLM results)
+  format-check-cache-enabled: true
+
   # MCP Integration
   mcp:
     enabled: ${MCP_ENABLED:true}

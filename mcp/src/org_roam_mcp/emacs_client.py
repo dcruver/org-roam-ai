@@ -340,10 +340,10 @@ class EmacsClient:
     
     def get_daily_content(self, date: Optional[str] = None) -> Dict[str, Any]:
         """Get content of daily note.
-        
+
         Args:
             date: Date in YYYY-MM-DD format (defaults to today)
-            
+
         Returns:
             Daily note content
         """
@@ -351,17 +351,17 @@ class EmacsClient:
             expression = f'(my/get-daily-note-content "{date}")'
         else:
             expression = '(my/get-daily-note-content)'
-        
+
         # This returns raw content, not JSON
         try:
             command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
             response = self._execute_command(command)
-            
+
             # Clean the response - it may have literal \n characters
             content = response.replace('\\n', '\n').strip()
             if content.startswith('"') and content.endswith('"'):
                 content = content[1:-1]  # Remove surrounding quotes
-            
+
             return {
                 "success": True,
                 "content": content,
@@ -375,7 +375,59 @@ class EmacsClient:
                 "content": "",
                 "date": date or "today"
             }
-    
+
+    def generate_embeddings(self, force: bool = False) -> Dict[str, Any]:
+        """Generate embeddings for all org-roam notes using org-roam-semantic.
+
+        This calls the org-roam-semantic-generate-all-embeddings function which
+        generates vector embeddings for all notes that don't have them or have
+        stale embeddings.
+
+        Args:
+            force: If True, regenerate embeddings even for notes that already have them
+
+        Returns:
+            Result with count of embeddings generated
+        """
+        # Call the org-roam-semantic function
+        # This function processes all notes and returns a count
+        if force:
+            expression = '(org-roam-semantic-generate-all-embeddings t)'
+        else:
+            expression = '(org-roam-semantic-generate-all-embeddings)'
+
+        try:
+            # This function may take a while for large corpora (handled by default subprocess timeout)
+            # The function returns the number of embeddings generated
+            command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+            response = self._execute_command(command)
+
+            # Parse the response - might be a number or a message string
+            response_str = response.strip().strip('"')  # Remove quotes if present
+
+            # Try to parse as number first
+            try:
+                count = int(response_str)
+            except ValueError:
+                # If it's a message string, extract the number
+                # Format: "Embedding generation complete: 20 processed, 130 skipped"
+                import re
+                match = re.search(r'(\d+)\s+processed', response_str)
+                count = int(match.group(1)) if match else 0
+
+            return {
+                "success": True,
+                "count": count,
+                "message": f"Generated {count} embeddings"
+            }
+        except Exception as e:
+            logger.error(f"Failed to generate embeddings: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "count": 0
+            }
+
 
     def sync_database(self, force: bool = True) -> Dict[str, Any]:
         """Sync org-roam database.

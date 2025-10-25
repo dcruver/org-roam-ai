@@ -28,6 +28,7 @@ public class CorpusScanner {
 
     private final OrgFileReader fileReader;
     private final HealthScoreCalculator healthScoreCalculator;
+    private final FormatCheckCache formatCheckCache;
 
     @Autowired(required = false)
     private OllamaChatService chatService;
@@ -152,8 +153,8 @@ public class CorpusScanner {
             }
         }
 
-        // Check format - use LLM if available, otherwise simple check
-        boolean formatOk = checkFormatWithLLM(orgNote);
+        // Check format - use LLM if available (with caching), otherwise simple check
+        boolean formatOk = checkFormatWithLLM(orgNote, filePath);
         boolean hasProperties = orgNote.isHasPropertiesDrawer();
         boolean hasTitle = orgNote.getTitle() != null && !orgNote.getTitle().isBlank();
 
@@ -375,10 +376,11 @@ public class CorpusScanner {
     }
 
     /**
-     * Check format using LLM if available, otherwise fall back to simple check.
+     * Check format using LLM if available (with caching), otherwise fall back to simple check.
      * This allows the audit to actually verify formatting with the LLM during scanning.
+     * Results are cached based on file modification time to avoid redundant LLM calls.
      */
-    private boolean checkFormatWithLLM(OrgNote orgNote) {
+    private boolean checkFormatWithLLM(OrgNote orgNote, Path filePath) {
         // Always do the simple check first
         boolean simpleCheck = orgNote.isFormattingOk();
 
@@ -393,15 +395,33 @@ public class CorpusScanner {
             return true;
         }
 
-        // Use LLM to analyze formatting for notes that fail simple check
+        // Get file's last modified time for cache key
+        Instant lastModified;
         try {
-            log.info("Using LLM to analyze formatting for note: {}", orgNote.getNoteId());
+            lastModified = Files.getLastModifiedTime(filePath).toInstant();
+        } catch (IOException e) {
+            log.warn("Failed to get last modified time for {}, skipping cache", filePath);
+            lastModified = Instant.now(); // Fallback, will cause cache miss
+        }
+
+        // Check cache first
+        Boolean cachedResult = formatCheckCache.getCachedResult(filePath, lastModified);
+        if (cachedResult != null) {
+            log.debug("Using cached format check result for {}: {}", orgNote.getNoteId(), cachedResult);
+            return cachedResult;
+        }
+
+        // Cache miss - use LLM to analyze formatting for notes that fail simple check
+        try {
+            log.info("Using LLM to analyze formatting for note: {} (cache miss)", orgNote.getNoteId());
             String analysis = chatService.analyzeOrgFormatting(orgNote.getRawContent());
 
             // Check if LLM found issues
             boolean hasIssues = analysis != null
                 && !analysis.toLowerCase().contains("no issues")
                 && !analysis.toLowerCase().contains("properly formatted");
+
+            boolean formatOk = !hasIssues;
 
             if (hasIssues) {
                 log.info("LLM found formatting issues in {}: {}",
@@ -411,7 +431,10 @@ public class CorpusScanner {
                 log.info("LLM says formatting is OK for {}", orgNote.getNoteId());
             }
 
-            return !hasIssues;
+            // Cache the result
+            formatCheckCache.cacheResult(filePath, lastModified, formatOk, analysis);
+
+            return formatOk;
         } catch (Exception e) {
             log.warn("LLM format analysis failed for {}, falling back to simple check: {}",
                 orgNote.getNoteId(), e.getMessage());

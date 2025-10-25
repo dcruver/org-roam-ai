@@ -2,56 +2,46 @@ package com.dcruver.orgroam.domain.actions;
 
 import com.dcruver.orgroam.domain.CorpusState;
 import com.dcruver.orgroam.domain.NoteMetadata;
-import com.dcruver.orgroam.io.OrgFileReader;
-import com.dcruver.orgroam.io.OrgNote;
-import com.dcruver.orgroam.nlp.EmbeddingStore;
-import com.dcruver.orgroam.nlp.OllamaEmbeddingService;
+import com.dcruver.orgroam.nlp.OrgRoamMcpClient;
 import com.embabel.agent.core.action.Action;
 import com.embabel.agent.core.action.ActionResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 
 /**
- * Safe action: Compute embeddings for notes missing or with stale embeddings.
+ * Safe action: Trigger embedding generation for notes via org-roam-semantic.
+ *
+ * NOTE: This action does NOT directly generate embeddings. Instead, it relies on
+ * org-roam-semantic's Emacs hooks to automatically generate embeddings when notes
+ * are modified. The MCP server ensures embeddings are created during note operations.
  *
  * Preconditions:
  * - Note not Source-locked (or metadata-only operation allowed)
  * - Missing embeddings OR embeddings older than max age
  *
  * Effects:
- * - Write chunk embeddings to store
- * - Update note metadata with EMBED_MODEL and EMBED_AT
+ * - Logs notes needing embeddings
+ * - User should manually trigger org-roam-semantic-generate-all-embeddings in Emacs
+ *   or embeddings will be generated automatically on next note modification
  *
- * Cost: Medium (LLM API call)
+ * Cost: Low (just logging and verification)
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ComputeEmbeddingsAction implements Action<CorpusState> {
 
-    private final OllamaEmbeddingService embeddingService;
-    private final EmbeddingStore embeddingStore;
-    private final OrgFileReader fileReader;
-
-    public ComputeEmbeddingsAction(
-            @org.springframework.beans.factory.annotation.Autowired(required = false) OllamaEmbeddingService embeddingService,
-            EmbeddingStore embeddingStore,
-            OrgFileReader fileReader) {
-        this.embeddingService = embeddingService;
-        this.embeddingStore = embeddingStore;
-        this.fileReader = fileReader;
-    }
+    @Autowired(required = false)
+    private final OrgRoamMcpClient mcpClient;
 
     @Value("${gardener.embeddings.max-age-days:90}")
     private int maxAgeDays;
-
-    @Value("${spring.ai.ollama.embedding.options.model}")
-    private String embedModel;
 
     @Override
     public String getName() {
@@ -71,87 +61,74 @@ public class ComputeEmbeddingsAction implements Action<CorpusState> {
 
     @Override
     public ActionResult<CorpusState> execute(CorpusState state) {
-        log.info("Computing embeddings for notes needing them");
-        int computed = 0;
-        int failed = 0;
+        log.info("Generating embeddings for notes via org-roam-semantic (through MCP)");
 
-        for (NoteMetadata note : state.getNotes()) {
-            if (!note.isMetadataMutable()) {
-                log.debug("Skipping note {} - agents disabled", note.getNoteId());
-                continue;
-            }
+        List<NoteMetadata> notesNeedingEmbeddings = state.getNotes().stream()
+            .filter(note -> note.isMetadataMutable())
+            .filter(note -> !note.isHasEmbeddings() || !note.isEmbeddingsFresh(maxAgeDays))
+            .toList();
 
-            boolean needsEmbedding = !note.isHasEmbeddings() || !note.isEmbeddingsFresh(maxAgeDays);
-            if (!needsEmbedding) {
-                continue;
-            }
-
-            try {
-                // Read note content
-                OrgNote orgNote = fileReader.read(note.getFilePath());
-                String content = orgNote.getBody();
-
-                if (content == null || content.isBlank()) {
-                    log.warn("Note {} has no content to embed", note.getNoteId());
-                    continue;
-                }
-
-                // Compute chunk hash (simplified - use content hash)
-                String chunkHash = Integer.toHexString(content.hashCode());
-
-                // Generate embedding
-                List<Double> embedding = embeddingService.embed(content);
-                if (embedding.isEmpty()) {
-                    log.error("Failed to generate embedding for note {}", note.getNoteId());
-                    failed++;
-                    continue;
-                }
-
-                // Store embedding
-                String preview = content.substring(0, Math.min(100, content.length()));
-                embeddingStore.store(note.getNoteId(), chunkHash, embedding, preview);
-
-                // Update metadata (in real implementation, would update the file)
-                log.info("Computed embedding for note {}", note.getNoteId());
-                computed++;
-
-            } catch (Exception e) {
-                log.error("Failed to compute embedding for note {}", note.getNoteId(), e);
-                failed++;
-            }
+        if (notesNeedingEmbeddings.isEmpty()) {
+            log.info("No notes need embeddings");
+            return ActionResult.<CorpusState>builder()
+                .success(true)
+                .resultingState(state)
+                .message("No notes need embeddings")
+                .build();
         }
 
-        log.info("Computed {} embeddings ({} failed)", computed, failed);
+        log.info("Found {} notes needing embeddings:", notesNeedingEmbeddings.size());
+        for (NoteMetadata note : notesNeedingEmbeddings) {
+            String reason = !note.isHasEmbeddings() ? "missing embeddings" : "stale embeddings";
+            log.info("  - {} ({}): {}", note.getFilePath().getFileName(), note.getNoteId(), reason);
+        }
 
-        return ActionResult.<CorpusState>builder()
-            .success(failed == 0)
-            .resultingState(state) // Would update state with new embeddings
-            .message(String.format("Computed %d embeddings (%d failed)", computed, failed))
-            .build();
+        // Check if MCP is available
+        if (mcpClient == null || !mcpClient.isAvailable()) {
+            log.error("MCP server is not available - cannot generate embeddings");
+            log.warn("To generate embeddings manually:");
+            log.warn("  1. Ensure Emacs is running with org-roam-semantic loaded");
+            log.warn("  2. Run: M-x org-roam-semantic-generate-all-embeddings");
+            return ActionResult.<CorpusState>builder()
+                .success(false)
+                .resultingState(state)
+                .message("MCP server unavailable - embeddings must be generated manually")
+                .build();
+        }
+
+        // Call MCP to generate embeddings
+        log.info("Calling MCP server to generate embeddings...");
+        OrgRoamMcpClient.GenerateEmbeddingsResult result = mcpClient.generateEmbeddings(false);
+
+        if (result.isSuccess()) {
+            log.info("Successfully generated {} embeddings", result.getCount());
+            return ActionResult.<CorpusState>builder()
+                .success(true)
+                .resultingState(state)
+                .message(String.format("Generated %d embeddings via org-roam-semantic",
+                    result.getCount()))
+                .build();
+        } else {
+            log.error("Failed to generate embeddings: {}", result.getMessage());
+            return ActionResult.<CorpusState>builder()
+                .success(false)
+                .resultingState(state)
+                .message("Failed to generate embeddings: " + result.getMessage())
+                .build();
+        }
     }
 
     @Override
     public double getCost(CorpusState state) {
-        // Cost based on number of notes needing embeddings
-        // Each embedding call is moderate cost
+        // Cost reflects actual work: MCP call + embedding generation in Emacs
+        // Each embedding call to Ollama takes time, so moderate cost
         return state.getNotesNeedingEmbeddings() * 5.0;
     }
 
     @Override
     public CorpusState apply(CorpusState state) {
-        // Return updated state after computing embeddings
-        // In real implementation, would update note metadata
-        List<NoteMetadata> updatedNotes = state.getNotes().stream()
-            .map(note -> {
-                if (!note.isHasEmbeddings()) {
-                    return note.withHasEmbeddings(true)
-                        .withEmbedModel(embedModel)
-                        .withEmbedAt(Instant.now());
-                }
-                return note;
-            })
-            .toList();
-
-        return state.withNotes(updatedNotes);
+        // This action doesn't modify state - embeddings are managed externally
+        // by org-roam-semantic in Emacs
+        return state;
     }
 }

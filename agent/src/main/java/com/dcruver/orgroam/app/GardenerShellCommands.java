@@ -29,6 +29,7 @@ public class GardenerShellCommands {
     private final CorpusScanner corpusScanner;
     private final GOAPPlanner goapPlanner;
     private final ActionExecutor actionExecutor;
+    private final com.dcruver.orgroam.domain.FormatCheckCache formatCheckCache;
 
     @Value("${gardener.target-health:90}")
     private int targetHealth;
@@ -91,7 +92,7 @@ public class GardenerShellCommands {
                 result.append(String.format("Proposals: %d (require human approval)\n\n",
                     lastPlan.countProposalActions()));
 
-                result.append("Run 'execute' to execute the plan or 'apply safe' for safe actions only.\n");
+                result.append("Run 'run-plan' to execute the plan or 'apply safe' for safe actions only.\n");
             } else {
                 result.append(lastPlan.getRationale()).append("\n");
             }
@@ -104,7 +105,7 @@ public class GardenerShellCommands {
         }
     }
 
-    @ShellMethod(key = {"execute", "x"}, value = "Execute the current plan")
+    @ShellMethod(key = {"run-plan", "run"}, value = "Execute the current plan")
     public String execute() {
         log.info("Executing plan...");
 
@@ -213,7 +214,7 @@ public class GardenerShellCommands {
 
             if (result.getSkippedCount() > 0) {
                 sb.append(String.format("Note: %d proposal actions skipped.\n", result.getSkippedCount()));
-                sb.append("Run 'execute' to process proposals, or 'proposals list' to review them.\n");
+                sb.append("Run 'run-plan' to process proposals, or 'proposals list' to review them.\n");
             }
 
             return sb.toString();
@@ -374,6 +375,43 @@ public class GardenerShellCommands {
         } catch (Exception e) {
             log.error("Status check failed", e);
             return "Failed to get status: " + e.getMessage();
+        }
+    }
+
+    @ShellMethod(key = "cache stats", value = "Show format check cache statistics")
+    public String cacheStats() {
+        try {
+            com.dcruver.orgroam.domain.FormatCheckCache.CacheStats stats = formatCheckCache.getStats();
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("Format Check Cache Statistics\n\n");
+            sb.append(String.format("Status: %s\n", stats.isEnabled() ? "Enabled" : "Disabled"));
+            sb.append(String.format("Cache entries: %d\n", stats.getSize()));
+            sb.append(String.format("- Format OK: %d\n", stats.getFormatOkCount()));
+            sb.append(String.format("- Format issues: %d\n\n", stats.getFormatIssuesCount()));
+
+            sb.append("Cache location: ~/.gardener/cache/format-check-cache.json\n\n");
+
+            sb.append("Note: Cache entries are automatically invalidated when files are modified.\n");
+            sb.append("Use 'cache clear' to force a full re-scan with LLM checks.\n");
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("Failed to get cache stats", e);
+            return "Failed to get cache stats: " + e.getMessage();
+        }
+    }
+
+    @ShellMethod(key = "cache clear", value = "Clear format check cache (force full re-scan)")
+    public String cacheClear() {
+        try {
+            formatCheckCache.clearCache();
+            return "Format check cache cleared. Next audit will perform full LLM analysis.";
+
+        } catch (Exception e) {
+            log.error("Failed to clear cache", e);
+            return "Failed to clear cache: " + e.getMessage();
         }
     }
 

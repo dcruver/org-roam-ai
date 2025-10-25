@@ -213,6 +213,21 @@ async def list_tools() -> ListToolsResult:
                     },
                     "required": []
                 }
+            ),
+            Tool(
+                name="generate_embeddings",
+                description="Generate semantic embeddings for org-roam notes using org-roam-semantic. Processes notes missing embeddings or with stale embeddings.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "force": {
+                            "type": "boolean",
+                            "description": "Regenerate embeddings even for notes that already have them",
+                            "default": False
+                        }
+                    },
+                    "required": []
+                }
             )
         ]
     )
@@ -365,6 +380,23 @@ async def call_tool(request: CallToolRequest) -> CallToolResult:
                 response = "✅ Org-roam database synced successfully"
             else:
                 response = f"❌ Failed to sync database: {result.get('error', 'Unknown error')}"
+
+            return CallToolResult(
+                content=[TextContent(type="text", text=response)]
+            )
+
+        elif tool_name == "generate_embeddings":
+            force = arguments.get("force", False)
+
+            result = emacs_client.generate_embeddings(force)
+
+            if result.get("success"):
+                count = result.get("count", 0)
+                response = f"✅ Generated {count} embeddings for org-roam notes"
+                if count == 0:
+                    response += "\n(All notes already have current embeddings)"
+            else:
+                response = f"❌ Failed to generate embeddings: {result.get('error', 'Unknown error')}"
 
             return CallToolResult(
                 content=[TextContent(type="text", text=response)]
@@ -546,7 +578,8 @@ def create_starlette_app():
                     ("get_similar_notes", None),
                     ("create_note", None),
                     ("add_daily_entry", None),
-                    ("get_daily_content", None)
+                    ("get_daily_content", None),
+                    ("generate_embeddings", None)
                 ]:
                     if tool_name == "search_notes":
                         tools.append({
@@ -681,6 +714,22 @@ def create_starlette_app():
                                 "required": []
                             }
                         })
+                    elif tool_name == "generate_embeddings":
+                        tools.append({
+                            "name": "generate_embeddings",
+                            "description": "Generate semantic embeddings for org-roam notes using org-roam-semantic. Processes notes missing embeddings or with stale embeddings.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "force": {
+                                        "type": "boolean",
+                                        "description": "Regenerate embeddings even for notes that already have them",
+                                        "default": False
+                                    }
+                                },
+                                "required": []
+                            }
+                        })
                     # Add other tools as needed...
                 
                 return JSONResponse({
@@ -786,6 +835,25 @@ def create_starlette_app():
                         "id": rpc_request.get("id"),
                         "result": {
                             "content": [{"type": "text", "text": str(result)}]
+                        }
+                    })
+                elif tool_name == "generate_embeddings":
+                    force = arguments.get("force", False)
+                    result = emacs_client.generate_embeddings(force)
+
+                    if result.get("success"):
+                        count = result.get("count", 0)
+                        response = f"✅ Generated {count} embeddings for org-roam notes"
+                        if count == 0:
+                            response += "\n(All notes already have current embeddings)"
+                    else:
+                        response = f"❌ Failed to generate embeddings: {result.get('error', 'Unknown error')}"
+
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": response}]
                         }
                     })
                 # Add other tool handlers as needed...

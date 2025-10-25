@@ -98,6 +98,13 @@ public class NormalizeFormattingAction implements Action<CorpusState> {
                 continue;
             }
 
+            // Skip if we already have a pending proposal for this note
+            if (patchWriter.hasExistingProposal(note.getNoteId(), getName())) {
+                log.debug("Skipping note {} - already has pending {} proposal",
+                    note.getNoteId(), getName());
+                continue;
+            }
+
             try {
                 // Read note
                 OrgNote orgNote = fileReader.read(note.getFilePath());
@@ -123,9 +130,8 @@ public class NormalizeFormattingAction implements Action<CorpusState> {
                     continue;
                 }
 
-                // Get LLM analysis of what was fixed
-                String analysis = chatService.analyzeOrgFormatting(originalContent);
-                String rationale = String.format("LLM-based formatting normalization.\n\nIssues found:\n%s", analysis);
+                // Rationale based on what the LLM fixed (analysis removed for performance)
+                String rationale = "LLM-based formatting normalization: ensured proper :PROPERTIES: drawer, level-1 heading, and final newline.";
 
                 // In dry-run, create patch only
                 if ("DRY_RUN".equals(executionMode)) {

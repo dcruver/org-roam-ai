@@ -40,6 +40,9 @@ public class SpringAIConfiguration {
 
     /**
      * Create the Ollama API client
+     * Note: Spring AI's OllamaApi uses RestClient internally which has default timeouts.
+     * For longer timeouts on remote GPU, consider configuring via application.yml:
+     * spring.ai.ollama.connection-timeout and spring.ai.ollama.read-timeout
      */
     @Bean
     public OllamaApi ollamaApi() {
