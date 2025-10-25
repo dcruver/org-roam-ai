@@ -1,8 +1,6 @@
 spring:
   application:
     name: org-roam-gardener
-  profiles:
-    active: dry-run
   main:
     allow-bean-definition-overriding: true
     web-application-type: none
@@ -100,28 +98,3 @@ logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 
----
-# Dry-run profile (default)
-spring:
-  config:
-    activate:
-      on-profile: dry-run
-
-gardener:
-  execution:
-    mode: DRY_RUN
-    apply-safe-actions: false
-    create-proposals: true
-
----
-# Auto profile
-spring:
-  config:
-    activate:
-      on-profile: auto
-
-gardener:
-  execution:
-    mode: AUTO
-    apply-safe-actions: true
-    create-proposals: true
