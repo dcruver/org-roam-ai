@@ -49,8 +49,6 @@ public class NormalizeFormattingAction implements Action<CorpusState> {
     private final PatchWriter patchWriter;
     private final OllamaChatService chatService;
 
-    @Value("${gardener.execution.mode:DRY_RUN}")
-    private String executionMode;
 
     public NormalizeFormattingAction(
             OrgFileReader fileReader,
@@ -133,37 +131,11 @@ public class NormalizeFormattingAction implements Action<CorpusState> {
                 // Rationale based on what the LLM fixed (analysis removed for performance)
                 String rationale = "LLM-based formatting normalization: ensured proper :PROPERTIES: drawer, level-1 heading, and final newline.";
 
-                // In dry-run, create patch only
-                if ("DRY_RUN".equals(executionMode)) {
-                    Map<String, Object> beforeStats = Map.of(
-                        "formatOk", orgNote.isFormattingOk(),
-                        "hasProperties", orgNote.isHasPropertiesDrawer()
-                    );
-
-                    Map<String, Object> afterStats = Map.of(
-                        "formatOk", true,
-                        "hasProperties", true
-                    );
-
-                    patchWriter.createProposal(
-                        note.getNoteId(),
-                        note.getFilePath(),
-                        getName(),
-                        rationale,
-                        originalContent,
-                        updatedContent,
-                        beforeStats,
-                        afterStats
-                    );
-
-                    log.info("Created LLM-based formatting proposal for note {}", note.getNoteId());
-                } else {
-                    // Auto mode: create backup and apply
-                    patchWriter.createBackup(note.getFilePath());
-                    // Write the LLM-corrected content directly
-                    java.nio.file.Files.writeString(note.getFilePath(), updatedContent);
-                    log.info("Applied LLM-normalized formatting for note {}", note.getNoteId());
-                }
+                // Create backup and apply changes
+                patchWriter.createBackup(note.getFilePath());
+                // Write the LLM-corrected content directly
+                java.nio.file.Files.writeString(note.getFilePath(), updatedContent);
+                log.info("Applied LLM-normalized formatting for note {}", note.getNoteId());
 
                 normalized++;
 
