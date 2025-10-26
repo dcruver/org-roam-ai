@@ -1,6 +1,7 @@
 package com.dcruver.orgroam.domain.planning;
 
 import com.dcruver.orgroam.domain.CorpusState;
+import com.dcruver.orgroam.domain.actions.AnalyzeNoteStructureAction;
 import com.dcruver.orgroam.domain.actions.ComputeEmbeddingsAction;
 import com.dcruver.orgroam.domain.actions.NormalizeFormattingAction;
 import com.dcruver.orgroam.domain.actions.SuggestLinksAction;
@@ -29,6 +30,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ActionExecutor {
 
+    private final AnalyzeNoteStructureAction analyzeNoteStructureAction;
     private final ComputeEmbeddingsAction computeEmbeddingsAction;
     private final NormalizeFormattingAction normalizeFormattingAction;
     private final SuggestLinksAction suggestLinksAction;
@@ -207,6 +209,7 @@ public class ActionExecutor {
      */
     private Action<CorpusState> getActionByName(String name) {
         return switch (name) {
+            case "AnalyzeNoteStructure" -> analyzeNoteStructureAction;
             case "ComputeEmbeddings" -> computeEmbeddingsAction;
             case "NormalizeFormatting" -> normalizeFormattingAction;
             case "SuggestLinks" -> suggestLinksAction;
