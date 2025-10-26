@@ -332,7 +332,17 @@ public class OrgRoamMcpClient {
 
     @Data
     public static class SemanticSearchResponse {
+        private Boolean success;
+        private String query;
+        @JsonProperty("search_type")
+        private String searchType;
+        @JsonProperty("total_found")
+        private Integer totalFound;
+        @JsonProperty("similarity_cutoff")
+        private Double similarityCutoff;
         private List<SemanticSearchResult> notes;
+        @JsonProperty("knowledge_context")
+        private Map<String, Object> knowledgeContext;
     }
 
     @Data
