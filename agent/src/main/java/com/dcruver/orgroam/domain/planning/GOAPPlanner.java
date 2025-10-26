@@ -99,11 +99,10 @@ public class GOAPPlanner {
      * Check if an action is safe (auto-applicable)
      */
     private boolean isSafeAction(Action<CorpusState> action) {
-        // Safe actions: AnalyzeNoteStructure (discovery only), ComputeEmbeddings, NormalizeFormatting
-        // Proposal actions: SuggestLinks
+        // Safe actions: ComputeEmbeddings, NormalizeFormatting
+        // Proposal/manual actions: AnalyzeNoteStructure (slow LLM analysis), SuggestLinks
         String name = action.getName();
-        return name.equals("AnalyzeNoteStructure") ||
-               name.equals("ComputeEmbeddings") ||
+        return name.equals("ComputeEmbeddings") ||
                name.equals("NormalizeFormatting");
     }
 

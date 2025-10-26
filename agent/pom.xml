@@ -14,7 +14,7 @@
 
     <groupId>com.dcruver</groupId>
     <artifactId>embabel-note-gardener</artifactId>
-    <version>0.2.3</version>
+    <version>0.2.4</version>
     <name>Embabel Note Gardener</name>
     <description>GOAP agent for maintaining Org-roam knowledge bases</description>
 
