@@ -802,12 +802,13 @@ def create_starlette_app():
                         arguments.get("limit", 10),
                         arguments.get("cutoff", 0.55)
                     )
+                    # Parse the JSON string result and return as object for HTTP JSON-RPC
+                    import json as json_lib
+                    parsed_result = json_lib.loads(result) if isinstance(result, str) else result
                     return JSONResponse({
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),
-                        "result": {
-                            "content": [{"type": "text", "text": str(result)}]
-                        }
+                        "result": parsed_result
                     })
                 elif tool_name == "create_note":
                     title = arguments.get("title")
