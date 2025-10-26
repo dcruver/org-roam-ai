@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test lint format clean build publish-gitea publish-pypi release
+.PHONY: help install install-dev test lint format clean build publish-gitea publish-pypi release deploy deploy-agent deploy-n8n
 
 help:
 	@echo "Available commands:"
@@ -12,6 +12,9 @@ help:
 	@echo "  make publish-gitea - Publish to Gitea package registry"
 	@echo "  make publish-pypi  - Publish to PyPI"
 	@echo "  make release       - Create a new release (build + tag + publish)"
+	@echo "  make deploy        - Deploy to all production servers"
+	@echo "  make deploy-agent  - Deploy to org-roam-agent-backend only"
+	@echo "  make deploy-n8n    - Deploy to n8n-backend only"
 
 install:
 	pip install -e .
@@ -74,3 +77,16 @@ check-deps:
 	@emacsclient --server-file=~/emacs-server/server --eval "(+ 1 1)" || echo "❌ Emacs server not accessible"
 	@echo "Checking Python dependencies..."
 	@pip check
+
+# Deployment targets
+deploy: publish-gitea
+	@echo "Deploying to all production servers..."
+	./deploy.sh all
+
+deploy-agent: publish-gitea
+	@echo "Deploying to org-roam-agent-backend..."
+	./deploy.sh agent
+
+deploy-n8n: publish-gitea
+	@echo "Deploying to n8n-backend..."
+	./deploy.sh n8n
