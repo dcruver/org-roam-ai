@@ -575,7 +575,7 @@ def create_starlette_app():
                 for tool_name, tool_handler in [
                     ("search_notes", None),
                     ("contextual_search", None),
-                    ("get_similar_notes", None),
+                    ("semantic_search", None),
                     ("create_note", None),
                     ("add_daily_entry", None),
                     ("get_daily_content", None),
@@ -611,6 +611,35 @@ def create_starlette_app():
                                         "type": "integer",
                                         "description": "Maximum number of results",
                                         "default": 10
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        })
+                    elif tool_name == "semantic_search":
+                        tools.append({
+                            "name": "semantic_search",
+                            "description": "Semantic vector search using AI embeddings to find conceptually related notes",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "Search query to find semantically similar content"
+                                    },
+                                    "limit": {
+                                        "type": "integer",
+                                        "description": "Maximum number of results to return",
+                                        "default": 10,
+                                        "minimum": 1,
+                                        "maximum": 50
+                                    },
+                                    "cutoff": {
+                                        "type": "number",
+                                        "description": "Similarity threshold (0.0-1.0, higher = more similar)",
+                                        "default": 0.55,
+                                        "minimum": 0.0,
+                                        "maximum": 1.0
                                     }
                                 },
                                 "required": ["query"]
