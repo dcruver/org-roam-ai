@@ -39,7 +39,9 @@ pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.gi
 **Install from Gitea Package Registry:**
 
 ```bash
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
+  org-roam-mcp
 ```
 
 ### For Developers

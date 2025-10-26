@@ -25,6 +25,7 @@ make publish-gitea  # Builds and uploads automatically
 ssh root@192.168.20.136 "systemctl stop org-roam-mcp && \
   /opt/org-roam-mcp-venv/bin/pip install \
   --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
   --upgrade org-roam-mcp && \
   systemctl start org-roam-mcp"
 
@@ -32,6 +33,7 @@ ssh root@192.168.20.136 "systemctl stop org-roam-mcp && \
 ssh root@n8n-backend.cruver.network "systemctl stop org-roam-mcp && \
   /opt/org-roam-mcp-venv/bin/pip install \
   --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
   --upgrade org-roam-mcp && \
   systemctl start org-roam-mcp"
 ```
@@ -132,8 +134,12 @@ curl --user dcruver:<token> \
 #### Install from Gitea registry:
 
 ```bash
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
+  org-roam-mcp
 ```
+
+**Note**: `--trusted-host` is required because we're using HTTP instead of HTTPS
 
 ### 3. Publishing to PyPI (Public)
 
@@ -308,7 +314,9 @@ jobs:
 pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
 
 # From Gitea package registry
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
+  org-roam-mcp
 
 # From PyPI (if published)
 pip install org-roam-mcp
@@ -338,10 +346,12 @@ pip install --upgrade git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-r
 
 Make sure you're using the correct index URL for Gitea:
 ```bash
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --trusted-host gitea-backend.cruver.network \
+  org-roam-mcp
 ```
 
-**Note**: Must use HTTP (not HTTPS) and port 3080
+**Note**: Must use HTTP (not HTTPS) and port 3080. The `--trusted-host` flag is required for HTTP repositories.
 
 ### Authentication Issues
 
