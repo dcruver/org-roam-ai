@@ -26,7 +26,10 @@ deploy_to_server() {
     echo -e "${YELLOW}Deploying to ${server_name}...${NC}"
 
     ssh "$server" "systemctl stop org-roam-mcp && \
-        ${VENV_PATH}/bin/pip install --index-url ${GITEA_INDEX} --upgrade ${PACKAGE_NAME} && \
+        ${VENV_PATH}/bin/pip install \
+            --index-url ${GITEA_INDEX} \
+            --trusted-host gitea-backend.cruver.network \
+            --upgrade ${PACKAGE_NAME} && \
         systemctl start org-roam-mcp && \
         systemctl status org-roam-mcp --no-pager | head -10"
 
