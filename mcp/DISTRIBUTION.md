@@ -2,6 +2,54 @@
 
 This document explains how to distribute the `org-roam-mcp` package.
 
+## 🚀 Quick Reference (Verified Working Setup)
+
+**Gitea Package Registry** (gitea-backend.cruver.network):
+- URL: `http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi`
+- Protocol: HTTP (not HTTPS)
+- Port: 3080
+
+**Current published version**: 0.1.1
+
+### Publish New Version
+
+```bash
+cd mcp
+make publish-gitea  # Builds and uploads automatically
+```
+
+### Install on Production Servers
+
+```bash
+# org-roam-agent-backend (192.168.20.136)
+ssh root@192.168.20.136 "systemctl stop org-roam-mcp && \
+  /opt/org-roam-mcp-venv/bin/pip install \
+  --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --upgrade org-roam-mcp && \
+  systemctl start org-roam-mcp"
+
+# n8n-backend.cruver.network
+ssh root@n8n-backend.cruver.network "systemctl stop org-roam-mcp && \
+  /opt/org-roam-mcp-venv/bin/pip install \
+  --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
+  --upgrade org-roam-mcp && \
+  systemctl start org-roam-mcp"
+```
+
+### Create Release
+
+```bash
+# 1. Update version in pyproject.toml
+# 2. Build and publish
+cd mcp && make publish-gitea
+
+# 3. Tag release
+git tag -a v0.1.x -m "Release version 0.1.x"
+git push origin v0.1.x
+```
+
+---
+
 ## Quick Install (For Users)
 
 ### Option 1: Install from Git (Recommended)
@@ -62,10 +110,12 @@ index-servers =
     gitea
 
 [gitea]
-repository = https://gitea-backend.cruver.network/api/packages/dcruver/pypi
+repository = http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi
 username = dcruver
 password = <your-gitea-token>
 ```
+
+**IMPORTANT**: Use HTTP (not HTTPS) and port 3080 for gitea-backend.cruver.network
 
 #### Upload to Gitea:
 
@@ -76,13 +126,13 @@ python -m twine upload --repository gitea dist/*
 # Or upload via curl
 curl --user dcruver:<token> \
   --upload-file dist/org_roam_mcp-0.1.0-py3-none-any.whl \
-  https://gitea-backend.cruver.network/api/packages/dcruver/pypi
+  http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi
 ```
 
 #### Install from Gitea registry:
 
 ```bash
-pip install --index-url https://gitea-backend.cruver.network/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
 ```
 
 ### 3. Publishing to PyPI (Public)
@@ -258,7 +308,7 @@ jobs:
 pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
 
 # From Gitea package registry
-pip install --index-url https://gitea-backend.cruver.network/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
 
 # From PyPI (if published)
 pip install org-roam-mcp
@@ -288,8 +338,10 @@ pip install --upgrade git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-r
 
 Make sure you're using the correct index URL for Gitea:
 ```bash
-pip install --index-url https://gitea-backend.cruver.network/api/packages/dcruver/pypi/simple org-roam-mcp
+pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple org-roam-mcp
 ```
+
+**Note**: Must use HTTP (not HTTPS) and port 3080
 
 ### Authentication Issues
 
