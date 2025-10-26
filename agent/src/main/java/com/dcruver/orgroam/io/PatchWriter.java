@@ -16,6 +16,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -62,9 +64,11 @@ public class PatchWriter {
             return null;
         }
 
-        String timestamp = TIMESTAMP_FORMAT.format(Instant.now());
+        // Convert Instant to LocalDateTime for formatting
+        LocalDateTime timestamp = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault());
+        String timestampStr = TIMESTAMP_FORMAT.format(timestamp);
         String filename = originalFile.getFileName().toString();
-        String backupFilename = filename + "." + timestamp + ".bak";
+        String backupFilename = filename + "." + timestampStr + ".bak";
         Path backupFile = backupDir.resolve(backupFilename);
 
         Files.copy(originalFile, backupFile, StandardCopyOption.REPLACE_EXISTING);
