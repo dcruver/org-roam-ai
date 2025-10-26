@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "org-roam-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP server for org-roam knowledge management system"
 authors = [
     {name = "dcruver", email = "dcruver@example.com"}

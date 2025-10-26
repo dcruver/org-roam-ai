@@ -796,6 +796,19 @@ def create_starlette_app():
                             "content": [{"type": "text", "text": str(result)}]
                         }
                     })
+                elif tool_name == "semantic_search":
+                    result = emacs_client.semantic_search(
+                        arguments.get("query"),
+                        arguments.get("limit", 10),
+                        arguments.get("cutoff", 0.55)
+                    )
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": {
+                            "content": [{"type": "text", "text": str(result)}]
+                        }
+                    })
                 elif tool_name == "create_note":
                     title = arguments.get("title")
                     content = arguments.get("content")
