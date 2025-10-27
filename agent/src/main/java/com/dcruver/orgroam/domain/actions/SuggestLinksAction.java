@@ -81,7 +81,7 @@ public class SuggestLinksAction implements Action<CorpusState> {
             log.debug("MCP client not available, cannot suggest links");
             return false;
         }
-        return state.getOrphanNotes() > 0 || hasNotesNeedingLinks(state);
+        return (state.getOrphanNotes() != null && !state.getOrphanNotes().isEmpty()) || hasNotesNeedingLinks(state);
     }
 
     @Override
