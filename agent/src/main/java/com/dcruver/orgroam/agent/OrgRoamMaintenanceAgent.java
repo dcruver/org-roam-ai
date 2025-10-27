@@ -11,6 +11,7 @@ import com.dcruver.orgroam.io.OrgNote;
 import com.dcruver.orgroam.io.PatchWriter;
 import com.dcruver.orgroam.nlp.OllamaChatService;
 import com.dcruver.orgroam.nlp.OrgRoamMcpClient;
+import com.embabel.agent.api.annotation.AchievesGoal;
 import com.embabel.agent.api.annotation.Action;
 import com.embabel.agent.api.annotation.Agent;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +55,12 @@ public class OrgRoamMaintenanceAgent {
 
     @Value("${gardener.embeddings.max-age-days:90}")
     private int maxAgeDays;
+
+    @Value("${gardener.notes-path}")
+    private String notesPath;
+
+    @Value("${gardener.proposals-dir:.gardener/proposals}")
+    private String proposalsDirName;
 
     // ============================================================================
     // Starting Action: Scan Corpus
@@ -238,14 +243,97 @@ public class OrgRoamMaintenanceAgent {
                 .build();
         }
 
-        // Simple clustering: for each orphan, find similar notes
-        // Group notes that appear together in search results
+        // Use semantic search to find relationships between orphans
+        // Build similarity graph: orphan -> list of similar orphans
+        Map<String, List<String>> similarityGraph = new java.util.HashMap<>();
+        Map<String, Double> similarityScores = new java.util.HashMap<>();
+
+        for (NoteMetadata orphan : orphans) {
+            try {
+                // Read note content for semantic search
+                OrgNote note = fileReader.read(orphan.getFilePath());
+                String title = note.getTitle() != null ? note.getTitle() : orphan.getNoteId();
+                String searchQuery = title + "\n" + note.getRawContent().substring(
+                    0, Math.min(500, note.getRawContent().length())
+                );
+
+                // Find similar notes (including other orphans)
+                List<OrgRoamMcpClient.SemanticSearchResult> results =
+                    mcpClient.semanticSearch(searchQuery, 10, 0.65);
+
+                // Extract orphan IDs from results
+                List<String> similarOrphans = results.stream()
+                    .filter(r -> r.getNodeId() != null && !r.getNodeId().equals(orphan.getNoteId()))
+                    .filter(r -> orphans.stream().anyMatch(o -> o.getNoteId().equals(r.getNodeId())))
+                    .map(OrgRoamMcpClient.SemanticSearchResult::getNodeId)
+                    .toList();
+
+                if (!similarOrphans.isEmpty()) {
+                    similarityGraph.put(orphan.getNoteId(), similarOrphans);
+
+                    // Track average similarity for this orphan
+                    double avgSim = results.stream()
+                        .filter(r -> similarOrphans.contains(r.getNodeId()))
+                        .mapToDouble(OrgRoamMcpClient.SemanticSearchResult::getSimilarity)
+                        .average()
+                        .orElse(0.0);
+                    similarityScores.put(orphan.getNoteId(), avgSim);
+                }
+
+            } catch (Exception e) {
+                log.error("Failed to find similar notes for orphan {}", orphan.getNoteId(), e);
+            }
+        }
+
+        // Group notes into clusters using simple graph traversal
         List<NoteCluster> clusters = new ArrayList<>();
+        java.util.Set<String> visited = new java.util.HashSet<>();
 
-        // TODO: Implement actual clustering logic using MCP semantic search
-        // For now, return empty clusters to complete the type chain
+        for (String orphanId : similarityGraph.keySet()) {
+            if (visited.contains(orphanId)) {
+                continue;
+            }
 
-        log.info("Found {} clusters", clusters.size());
+            // BFS to find all connected orphans
+            List<String> clusterNotes = new ArrayList<>();
+            java.util.Queue<String> queue = new java.util.LinkedList<>();
+            queue.add(orphanId);
+            visited.add(orphanId);
+
+            while (!queue.isEmpty()) {
+                String current = queue.poll();
+                clusterNotes.add(current);
+
+                // Add connected orphans
+                List<String> neighbors = similarityGraph.getOrDefault(current, List.of());
+                for (String neighbor : neighbors) {
+                    if (!visited.contains(neighbor)) {
+                        visited.add(neighbor);
+                        queue.add(neighbor);
+                    }
+                }
+            }
+
+            // Only create cluster if it has at least 2 notes
+            if (clusterNotes.size() >= 2) {
+                double avgSimilarity = clusterNotes.stream()
+                    .mapToDouble(id -> similarityScores.getOrDefault(id, 0.0))
+                    .average()
+                    .orElse(0.0);
+
+                NoteCluster cluster = NoteCluster.builder()
+                    .noteIds(clusterNotes)
+                    .avgSimilarity(avgSimilarity)
+                    .type(NoteCluster.ClusterType.ORPHAN_GROUP)
+                    .build();
+
+                clusters.add(cluster);
+                log.info("Found cluster with {} orphans (avg similarity: {:.2f})",
+                    cluster.size(), avgSimilarity);
+            }
+        }
+
+        log.info("Found {} clusters from {} orphans", clusters.size(), orphans.size());
 
         return OrphanClusters.builder()
             .state(corpus.getState())
@@ -280,9 +368,71 @@ public class OrgRoamMaintenanceAgent {
                 continue;
             }
 
-            // TODO: Use LLM to discover theme from cluster note content
-            // For now, just add clusters as-is
-            clustersWithThemes.add(cluster);
+            try {
+                // Collect note titles and excerpts from cluster
+                StringBuilder clusterContent = new StringBuilder();
+                int noteNum = 1;
+
+                for (String noteId : cluster.getNoteIds()) {
+                    // Find note metadata
+                    NoteMetadata note = clusters.getState().getNotes().stream()
+                        .filter(n -> n.getNoteId().equals(noteId))
+                        .findFirst()
+                        .orElse(null);
+
+                    if (note != null) {
+                        // Read note to get title and content
+                        try {
+                            OrgNote orgNote = fileReader.read(note.getFilePath());
+                            String title = orgNote.getTitle() != null ? orgNote.getTitle() : note.getNoteId();
+                            clusterContent.append(String.format("\n--- Note %d: %s ---\n", noteNum++, title));
+
+                            String content = orgNote.getRawContent();
+                            // Use first 300 chars of content
+                            String excerpt = content.substring(0, Math.min(300, content.length()));
+                            clusterContent.append(excerpt);
+                            if (content.length() > 300) {
+                                clusterContent.append("...");
+                            }
+                            clusterContent.append("\n");
+                        } catch (IOException e) {
+                            log.warn("Could not read note {} for theme analysis", noteId);
+                        }
+                    }
+                }
+
+                // Use LLM to discover common theme
+                String systemMessage = "You are an expert at analyzing knowledge bases and identifying common themes. " +
+                    "Given a collection of related notes, identify the implicit theme or topic that connects them. " +
+                    "Respond with ONLY a concise theme description (3-7 words), no explanation.";
+
+                String userMessage = String.format(
+                    "Analyze these %d related notes and identify their common theme:\n%s\n\n" +
+                    "What is the common theme? (3-7 words only)",
+                    cluster.size(),
+                    clusterContent.toString()
+                );
+
+                String discoveredTheme = chatService.chat(systemMessage, userMessage).trim();
+
+                // Clean up response (remove quotes, extra formatting)
+                discoveredTheme = discoveredTheme.replaceAll("^[\"']|[\"']$", "").trim();
+
+                if (!discoveredTheme.isEmpty()) {
+                    log.info("Discovered theme for cluster of {} notes: {}", cluster.size(), discoveredTheme);
+
+                    // Create new cluster with theme
+                    NoteCluster themedCluster = cluster.withDiscoveredTheme(discoveredTheme);
+                    clustersWithThemes.add(themedCluster);
+                } else {
+                    log.warn("LLM returned empty theme for cluster");
+                    clustersWithThemes.add(cluster);
+                }
+
+            } catch (Exception e) {
+                log.error("Failed to discover theme for cluster", e);
+                clustersWithThemes.add(cluster);
+            }
         }
 
         log.info("Discovered themes for {} clusters", clustersWithThemes.size());
@@ -300,6 +450,7 @@ public class OrgRoamMaintenanceAgent {
      * Precondition: ClustersWithThemes (needs themes to create hubs)
      * Postcondition: HealthyCorpus (terminal goal - knowledge base improved)
      */
+    @AchievesGoal(description = "Healthy, well-organized knowledge base with reduced orphans")
     @Action
     public HealthyCorpus proposeHubNotes(ClustersWithThemes clusters) {
         log.info("Proposing hub notes for {} clusters with themes", clusters.getClusterCount());
@@ -319,10 +470,100 @@ public class OrgRoamMaintenanceAgent {
                 continue;
             }
 
-            // TODO: Generate hub note content using LLM
-            // TODO: Create proposal with new hub note file
+            try {
+                // Collect note information from cluster
+                List<NoteMetadata> clusterNotes = new ArrayList<>();
+                StringBuilder noteSummaries = new StringBuilder();
 
-            proposalsCreated++;
+                for (String noteId : cluster.getNoteIds()) {
+                    NoteMetadata note = clusters.getState().getNotes().stream()
+                        .filter(n -> n.getNoteId().equals(noteId))
+                        .findFirst()
+                        .orElse(null);
+
+                    if (note != null) {
+                        clusterNotes.add(note);
+
+                        // Read note to get title
+                        try {
+                            OrgNote orgNote = fileReader.read(note.getFilePath());
+                            String title = orgNote.getTitle() != null ? orgNote.getTitle() : noteId;
+                            noteSummaries.append(String.format("- [[id:%s][%s]]\n", noteId, title));
+                        } catch (IOException e) {
+                            log.warn("Could not read note {} for title", noteId);
+                            noteSummaries.append(String.format("- [[id:%s][%s]]\n", noteId, noteId));
+                        }
+                    }
+                }
+
+                // Generate hub note ID and title
+                String hubNoteId = "hub-" + cluster.getDiscoveredTheme()
+                    .toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "-")
+                    .replaceAll("^-|-$", "");
+
+                String hubNoteTitle = cluster.getDiscoveredTheme();
+
+                // Use LLM to generate hub note content
+                String systemMessage = "You are an expert at creating Map of Content (MOC) hub notes for knowledge bases. " +
+                    "A hub note should provide overview and context for a collection of related notes. " +
+                    "Generate ONLY the introductory paragraph (2-4 sentences) that describes the theme and its importance. " +
+                    "Do NOT include title, properties, or links - just the content paragraph.";
+
+                String userMessage = String.format(
+                    "Theme: %s\n\nRelated notes:\n%s\n\n" +
+                    "Generate an introductory paragraph for a hub note about this theme:",
+                    cluster.getDiscoveredTheme(),
+                    noteSummaries.toString()
+                );
+
+                String introContent = chatService.chat(systemMessage, userMessage).trim();
+
+                // Build complete hub note content
+                StringBuilder hubContent = new StringBuilder();
+                hubContent.append(":PROPERTIES:\n");
+                hubContent.append(String.format(":ID:       %s\n", hubNoteId));
+                hubContent.append(String.format(":CREATED:  [%s]\n", java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd EEE HH:mm"))));
+                hubContent.append(":END:\n");
+                hubContent.append(String.format("#+title: %s\n\n", hubNoteTitle));
+
+                hubContent.append(introContent);
+                hubContent.append("\n\n");
+
+                hubContent.append("* Related Notes\n\n");
+                hubContent.append(noteSummaries.toString());
+
+                // Create proposal for new hub note
+                String proposalId = String.format("hub-note-%s", hubNoteId);
+                String rationale = String.format(
+                    "Create hub note to organize %d orphan notes around theme: %s\n\n" +
+                    "This hub note will:\n" +
+                    "- Provide overview and context for the theme\n" +
+                    "- Link all related orphan notes\n" +
+                    "- Reduce fragmentation by creating central connection point\n\n" +
+                    "Cluster similarity score: %.2f",
+                    cluster.size(),
+                    cluster.getDiscoveredTheme(),
+                    cluster.getAvgSimilarity()
+                );
+
+                // Create proposal file
+                java.nio.file.Path notesBasePath = java.nio.file.Paths.get(notesPath).toAbsolutePath();
+                java.nio.file.Path proposalsDir = notesBasePath.resolve(proposalsDirName);
+                java.nio.file.Files.createDirectories(proposalsDir);
+
+                java.nio.file.Path proposalPath = proposalsDir.resolve(proposalId + ".new.org");
+                java.nio.file.Files.writeString(proposalPath, hubContent.toString());
+
+                log.info("Created hub note proposal: {} (theme: {}, {} notes)",
+                    proposalId, cluster.getDiscoveredTheme(), cluster.size());
+
+                proposalsCreated++;
+
+            } catch (Exception e) {
+                log.error("Failed to create hub note proposal for cluster", e);
+            }
         }
 
         log.info("Created {} hub note proposals", proposalsCreated);
