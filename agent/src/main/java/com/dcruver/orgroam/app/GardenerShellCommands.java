@@ -99,8 +99,8 @@ public class GardenerShellCommands {
                 result.append("No actions needed - corpus is healthy!\n");
             }
 
-            result.append("\nRun 'execute' to run the agent's action chain.\n");
-            result.append("Run 'execute-safe' to run only safe (non-proposal) actions.\n");
+            result.append("\nRun 'run' to run the agent's action chain.\n");
+            result.append("Run 'run-safe' to run only safe (non-proposal) actions.\n");
 
             return result.toString();
 
@@ -110,8 +110,8 @@ public class GardenerShellCommands {
         }
     }
 
-    @ShellMethod(key = {"execute", "run"}, value = "Execute the agent's action chain")
-    public String execute() {
+    @ShellMethod(key = {"run", "run-agent"}, value = "Execute the agent's action chain")
+    public String runAgent() {
         log.info("Executing Embabel agent action chain...");
 
         try {
@@ -172,8 +172,8 @@ public class GardenerShellCommands {
         }
     }
 
-    @ShellMethod(key = {"execute-safe", "apply-safe"}, value = "Execute only safe (maintenance) actions")
-    public String executeSafe() {
+    @ShellMethod(key = {"run-safe", "apply-safe"}, value = "Execute only safe (maintenance) actions")
+    public String runSafe() {
         log.info("Executing safe actions only (no proposals)...");
 
         try {
