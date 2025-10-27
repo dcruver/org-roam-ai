@@ -1,15 +1,14 @@
 package com.dcruver.orgroam.app;
 
+import com.dcruver.orgroam.agent.OrgRoamMaintenanceAgent;
+import com.dcruver.orgroam.agent.domain.*;
 import com.dcruver.orgroam.domain.CorpusScanner;
 import com.dcruver.orgroam.domain.CorpusState;
-import com.dcruver.orgroam.domain.planning.ActionExecutor;
-import com.dcruver.orgroam.domain.planning.ActionPlan;
-import com.dcruver.orgroam.domain.planning.GOAPPlanner;
-import com.dcruver.orgroam.domain.planning.PlannedAction;
 import com.dcruver.orgroam.io.ChangeProposal;
 import com.dcruver.orgroam.io.PatchWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
@@ -19,6 +18,7 @@ import java.util.List;
 
 /**
  * Spring Shell commands for the org-roam gardener.
+ * Now using Embabel GOAP agent for automatic planning.
  */
 @ShellComponent
 @Slf4j
@@ -27,31 +27,27 @@ public class GardenerShellCommands {
 
     private final PatchWriter patchWriter;
     private final CorpusScanner corpusScanner;
-    private final GOAPPlanner goapPlanner;
-    private final ActionExecutor actionExecutor;
     private final com.dcruver.orgroam.domain.FormatCheckCache formatCheckCache;
+
+    @Autowired(required = false)
+    private final OrgRoamMaintenanceAgent agent;
 
     @Value("${gardener.target-health:90}")
     private int targetHealth;
 
-    // Cached state and plan from last audit
+    // Cached state from last audit
     private CorpusState lastCorpusState;
-    private ActionPlan lastPlan;
 
     @ShellMethod(key = {"audit", "audit now"}, value = "Trigger immediate audit and produce plan")
     public String audit() {
         log.info("Running corpus audit...");
 
         try {
-            // 1. Scan all notes in notes-path
+            // Scan all notes in notes-path
             log.info("Scanning corpus...");
             lastCorpusState = corpusScanner.scanCorpus();
 
-            // 2. Run GOAP planner to produce action plan
-            log.info("Generating action plan...");
-            lastPlan = goapPlanner.generatePlan(lastCorpusState);
-
-            // 3. Format results
+            // Format results
             StringBuilder result = new StringBuilder();
             result.append("Audit completed.\n\n");
 
@@ -64,38 +60,47 @@ public class GardenerShellCommands {
             result.append(String.format("- Format issues: %d\n",
                 lastCorpusState.getNotesWithFormatIssues()));
             result.append(String.format("- Orphan notes: %d\n",
-                lastCorpusState.getOrphanNotes()));
+                lastCorpusState.getOrphanNotes() != null ? lastCorpusState.getOrphanNotes().size() : 0));
             result.append(String.format("- Stale notes: %d\n",
                 lastCorpusState.getStaleNotes()));
             result.append("\n");
 
-            result.append(String.format("Plan: %d actions recommended\n\n",
-                lastPlan.getActions().size()));
+            // Show Embabel agent action chain
+            result.append("Embabel Agent Action Chain:\n");
+            result.append("The agent will execute the following type-based action sequence:\n\n");
 
-            if (!lastPlan.getActions().isEmpty()) {
-                result.append("Recommended Actions:\n");
-                for (int i = 0; i < lastPlan.getActions().size(); i++) {
-                    PlannedAction action = lastPlan.getActions().get(i);
-                    result.append(String.format("%d. [%s] %s\n",
-                        i + 1,
-                        action.isSafe() ? "SAFE" : "PROPOSAL",
-                        action.getActionName()));
-                    result.append(String.format("   %s\n", action.getRationale()));
-                    result.append(String.format("   Affects %d notes (cost: %.1f)\n",
-                        action.getAffectedNotes(), action.getCost()));
-                }
-                result.append("\n");
-
-                result.append(lastPlan.getRationale()).append("\n\n");
-                result.append(String.format("Safe actions: %d (auto-apply in auto mode)\n",
-                    lastPlan.countSafeActions()));
-                result.append(String.format("Proposals: %d (require human approval)\n\n",
-                    lastPlan.countProposalActions()));
-
-                result.append("Run 'run-plan' to execute the plan or 'apply safe' for safe actions only.\n");
-            } else {
-                result.append(lastPlan.getRationale()).append("\n");
+            int actionNum = 1;
+            if (lastCorpusState.getNotesWithFormatIssues() > 0) {
+                result.append(String.format("%d. [SAFE] NormalizeFormatting → FormattedCorpus\n", actionNum++));
+                result.append(String.format("   Fix formatting issues for %d notes\n",
+                    lastCorpusState.getNotesWithFormatIssues()));
             }
+
+            if (lastCorpusState.getNotesNeedingEmbeddings() > 0) {
+                result.append(String.format("%d. [SAFE] GenerateEmbeddings → CorpusWithEmbeddings\n", actionNum++));
+                result.append(String.format("   Generate embeddings for %d notes via MCP\n",
+                    lastCorpusState.getNotesNeedingEmbeddings()));
+            }
+
+            int orphanCount = lastCorpusState.getOrphanNotes() != null ?
+                lastCorpusState.getOrphanNotes().size() : 0;
+            if (orphanCount > 0) {
+                result.append(String.format("%d. [ANALYSIS] FindOrphanClusters → OrphanClusters\n", actionNum++));
+                result.append(String.format("   Cluster %d orphan notes by semantic similarity\n", orphanCount));
+
+                result.append(String.format("%d. [ANALYSIS] AnalyzeClusterThemes → ClustersWithThemes\n", actionNum++));
+                result.append("   Use LLM to discover implicit themes in clusters\n");
+
+                result.append(String.format("%d. [PROPOSAL] ProposeHubNotes → HealthyCorpus\n", actionNum++));
+                result.append("   Generate MOC/hub note proposals for organizing knowledge\n");
+            }
+
+            if (actionNum == 1) {
+                result.append("No actions needed - corpus is healthy!\n");
+            }
+
+            result.append("\nRun 'execute' to run the agent's action chain.\n");
+            result.append("Run 'execute-safe' to run only safe (non-proposal) actions.\n");
 
             return result.toString();
 
@@ -105,52 +110,59 @@ public class GardenerShellCommands {
         }
     }
 
-    @ShellMethod(key = {"run-plan", "run"}, value = "Execute the current plan")
+    @ShellMethod(key = {"execute", "run"}, value = "Execute the agent's action chain")
     public String execute() {
-        log.info("Executing plan...");
+        log.info("Executing Embabel agent action chain...");
 
         try {
-            // Check if we have a plan
-            if (lastPlan == null || lastCorpusState == null) {
-                return "No plan available. Run 'audit' first to generate a plan.";
+            if (agent == null) {
+                return "Agent not available. Check that Embabel is properly configured.";
             }
 
-            if (lastPlan.getActions().isEmpty()) {
-                return "Plan is empty - no actions to execute.";
-            }
-
-            // Execute the plan
-            ActionExecutor.ExecutionResult result = actionExecutor.executePlan(
-                lastPlan,
-                lastCorpusState,
-                false  // Execute all actions (safe + proposals)
-            );
-
-            // Update cached state
-            lastCorpusState = result.getFinalState();
-
-            // Build result message
             StringBuilder sb = new StringBuilder();
-            sb.append("Plan execution completed.\n\n");
+            sb.append("Executing agent action chain...\n\n");
 
-            sb.append(String.format("Actions executed: %d\n",
-                result.getSuccessCount() + result.getFailureCount()));
-            sb.append(String.format("- Succeeded: %d\n", result.getSuccessCount()));
-            sb.append(String.format("- Failed: %d\n", result.getFailureCount()));
-            sb.append(String.format("- Skipped: %d\n\n", result.getSkippedCount()));
+            // 1. Scan corpus
+            log.info("Step 1: Scanning corpus");
+            RawCorpus rawCorpus = agent.scanCorpus();
+            sb.append("✓ Scanned corpus: ").append(rawCorpus.getTotalNotes()).append(" notes\n");
 
-            // Show details of each execution
-            for (ActionExecutor.ActionExecution execution : result.getExecutions()) {
-                String status = execution.isSuccess() ? "✓" :
-                               execution.isSkipped() ? "⊘" : "✗";
-                sb.append(String.format("%s %s: %s\n",
-                    status,
-                    execution.getActionName(),
-                    execution.getMessage()));
+            // 2. Normalize formatting (if needed)
+            if (rawCorpus.getNotesWithFormatIssues() > 0) {
+                log.info("Step 2: Normalizing formatting for {} notes", rawCorpus.getNotesWithFormatIssues());
+                FormattedCorpus formattedCorpus = agent.normalizeFormatting(rawCorpus);
+                sb.append("✓ Normalized formatting: ").append(rawCorpus.getNotesWithFormatIssues()).append(" notes fixed\n");
+
+                // 3. Generate embeddings (if needed)
+                if (formattedCorpus.getNotesNeedingEmbeddings() > 0) {
+                    log.info("Step 3: Generating embeddings for {} notes", formattedCorpus.getNotesNeedingEmbeddings());
+                    CorpusWithEmbeddings embeddedCorpus = agent.generateEmbeddings(formattedCorpus);
+                    sb.append("✓ Generated embeddings: ").append(formattedCorpus.getNotesNeedingEmbeddings()).append(" notes\n");
+
+                    // 4. Find orphan clusters (if any orphans)
+                    if (embeddedCorpus.getOrphanCount() > 0) {
+                        log.info("Step 4: Finding clusters among {} orphans", embeddedCorpus.getOrphanCount());
+                        OrphanClusters clusters = agent.findOrphanClusters(embeddedCorpus);
+                        sb.append("✓ Found ").append(clusters.getClusterCount()).append(" orphan clusters\n");
+
+                        // 5. Analyze cluster themes
+                        if (clusters.hasClusters()) {
+                            log.info("Step 5: Analyzing themes for {} clusters", clusters.getClusterCount());
+                            ClustersWithThemes themedClusters = agent.analyzeClusterThemes(clusters);
+                            sb.append("✓ Analyzed themes for ").append(themedClusters.getClusterCount()).append(" clusters\n");
+
+                            // 6. Propose hub notes
+                            log.info("Step 6: Proposing hub notes");
+                            HealthyCorpus healthyCorpus = agent.proposeHubNotes(themedClusters);
+                            sb.append("✓ Generated hub note proposals\n");
+                        }
+                    }
+                }
             }
 
-            sb.append("\nRun 'status' to see updated corpus health.\n");
-            sb.append("Run 'proposals list' to review proposals.\n");
+            sb.append("\nAgent execution completed!\n");
+            sb.append("Run 'status' to see updated corpus health.\n");
+            sb.append("Run 'proposals list' to review any proposals.\n");
 
             return sb.toString();
 
@@ -160,67 +172,53 @@ public class GardenerShellCommands {
         }
     }
 
-    @ShellMethod(key = "apply safe", value = "Apply all safe actions from current plan")
-    public String applySafe() {
-        log.info("Applying safe actions only...");
+    @ShellMethod(key = {"execute-safe", "apply-safe"}, value = "Execute only safe (maintenance) actions")
+    public String executeSafe() {
+        log.info("Executing safe actions only (no proposals)...");
 
         try {
-            // Check if we have a plan
-            if (lastPlan == null || lastCorpusState == null) {
-                return "No plan available. Run 'audit' first to generate a plan.";
+            if (agent == null) {
+                return "Agent not available. Check that Embabel is properly configured.";
             }
 
-            if (lastPlan.getActions().isEmpty()) {
-                return "Plan is empty - no actions to execute.";
-            }
-
-            long safeCount = lastPlan.countSafeActions();
-            if (safeCount == 0) {
-                return "No safe actions in plan. All actions require human approval.";
-            }
-
-            // Execute safe actions only
-            ActionExecutor.ExecutionResult result = actionExecutor.executePlan(
-                lastPlan,
-                lastCorpusState,
-                true  // Safe actions only
-            );
-
-            // Update cached state
-            lastCorpusState = result.getFinalState();
-
-            // Build result message
             StringBuilder sb = new StringBuilder();
-            sb.append("Safe actions applied.\n\n");
+            sb.append("Executing safe maintenance actions...\n\n");
 
-            sb.append(String.format("Actions executed: %d\n",
-                result.getSuccessCount() + result.getFailureCount()));
-            sb.append(String.format("- Succeeded: %d\n", result.getSuccessCount()));
-            sb.append(String.format("- Failed: %d\n", result.getFailureCount()));
-            sb.append(String.format("- Skipped (proposals): %d\n\n", result.getSkippedCount()));
+            // 1. Scan corpus
+            log.info("Step 1: Scanning corpus");
+            RawCorpus rawCorpus = agent.scanCorpus();
+            sb.append("✓ Scanned corpus: ").append(rawCorpus.getTotalNotes()).append(" notes\n");
 
-            // Show details of safe actions
-            for (ActionExecutor.ActionExecution execution : result.getExecutions()) {
-                if (!execution.isSkipped()) {
-                    String status = execution.isSuccess() ? "✓" : "✗";
-                    sb.append(String.format("%s %s: %s\n",
-                        status,
-                        execution.getActionName(),
-                        execution.getMessage()));
+            int actionsRun = 0;
+
+            // 2. Normalize formatting (SAFE)
+            if (rawCorpus.getNotesWithFormatIssues() > 0) {
+                log.info("Step 2: Normalizing formatting for {} notes", rawCorpus.getNotesWithFormatIssues());
+                FormattedCorpus formattedCorpus = agent.normalizeFormatting(rawCorpus);
+                sb.append("✓ Normalized formatting: ").append(rawCorpus.getNotesWithFormatIssues()).append(" notes fixed\n");
+                actionsRun++;
+
+                // 3. Generate embeddings (SAFE)
+                if (formattedCorpus.getNotesNeedingEmbeddings() > 0) {
+                    log.info("Step 3: Generating embeddings for {} notes", formattedCorpus.getNotesNeedingEmbeddings());
+                    CorpusWithEmbeddings embeddedCorpus = agent.generateEmbeddings(formattedCorpus);
+                    sb.append("✓ Generated embeddings: ").append(formattedCorpus.getNotesNeedingEmbeddings()).append(" notes\n");
+                    actionsRun++;
                 }
             }
 
-            sb.append("\nRun 'status' to see updated corpus health.\n");
-
-            if (result.getSkippedCount() > 0) {
-                sb.append(String.format("Note: %d proposal actions skipped.\n", result.getSkippedCount()));
-                sb.append("Run 'run-plan' to process proposals, or 'proposals list' to review them.\n");
+            if (actionsRun == 0) {
+                sb.append("No safe actions needed - formatting and embeddings are up to date!\n");
             }
+
+            sb.append("\nSafe actions completed!\n");
+            sb.append("Run 'status' to see updated corpus health.\n");
+            sb.append("Run 'execute' to include knowledge structure analysis and proposals.\n");
 
             return sb.toString();
 
         } catch (Exception e) {
-            log.error("Safe action application failed", e);
+            log.error("Safe action execution failed", e);
             return "Failed: " + e.getMessage();
         }
     }
@@ -410,7 +408,8 @@ public class GardenerShellCommands {
                 state.getTotalNotes() - state.getNotesWithEmbeddings()));
             result.append(String.format("- With format issues: %d\n",
                 state.getNotesWithFormatIssues()));
-            result.append(String.format("- Orphan notes: %d\n", state.getOrphanNotes()));
+            result.append(String.format("- Orphan notes: %d\n",
+                state.getOrphanNotes() != null ? state.getOrphanNotes().size() : 0));
             result.append(String.format("- Stale notes: %d\n", state.getStaleNotes()));
             result.append("\n");
 
