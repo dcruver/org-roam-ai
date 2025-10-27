@@ -1,12 +1,8 @@
 package com.dcruver.orgroam.domain.planning;
 
 import com.dcruver.orgroam.domain.CorpusState;
-import com.dcruver.orgroam.domain.actions.AnalyzeNoteStructureAction;
-import com.dcruver.orgroam.domain.actions.ComputeEmbeddingsAction;
-import com.dcruver.orgroam.domain.actions.NormalizeFormattingAction;
-import com.dcruver.orgroam.domain.actions.SuggestLinksAction;
 import com.embabel.agent.core.action.Action;
-import lombok.RequiredArgsConstructor;
+import com.embabel.agent.core.goal.Goal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -15,78 +11,71 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Simple GOAP (Goal-Oriented Action Planning) planner.
- * Evaluates available actions and generates an execution plan.
+ * Real GOAP (Goal-Oriented Action Planning) planner.
+ * Uses backward chaining from goals to generate intelligent execution plans.
+ *
+ * This is the main planner interface used by the shell commands.
+ * It coordinates between goals, actions, and the backward-chaining algorithm.
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class GOAPPlanner {
 
-    private final AnalyzeNoteStructureAction analyzeNoteStructureAction;
-    private final ComputeEmbeddingsAction computeEmbeddingsAction;
-    private final NormalizeFormattingAction normalizeFormattingAction;
-    private final SuggestLinksAction suggestLinksAction;
+    private final BackwardChainingPlanner backwardChainingPlanner;
+    private final List<Goal<CorpusState>> goals;
+    private final List<Action<CorpusState>> actions;
 
     @Value("${gardener.target-health:90}")
     private int targetHealth;
 
     /**
-     * Generate an action plan for the given corpus state.
-     * Returns actions sorted by priority (safe actions first, then by cost).
+     * Constructor that auto-discovers all goals and actions via Spring
+     */
+    public GOAPPlanner(
+            BackwardChainingPlanner backwardChainingPlanner,
+            List<Goal<CorpusState>> goals,
+            List<Action<CorpusState>> actions) {
+        this.backwardChainingPlanner = backwardChainingPlanner;
+        this.goals = goals;
+        this.actions = actions;
+
+        log.info("GOAPPlanner initialized with {} goals and {} actions",
+            goals.size(), actions.size());
+        goals.forEach(g -> log.info("  Goal: {} (priority: {})", g.getName(), g.getPriority()));
+        actions.forEach(a -> log.info("  Action: {}", a.getName()));
+    }
+
+    /**
+     * Generate an action plan for the given corpus state using real GOAP backward chaining.
      */
     public ActionPlan generatePlan(CorpusState state) {
-        log.info("Generating action plan for corpus (mean health: {}, target: {})",
+        log.info("Generating GOAP plan for corpus (mean health: {}, target: {})",
             state.getMeanHealthScore(), targetHealth);
 
-        List<PlannedAction> plannedActions = new ArrayList<>();
-        double totalCost = 0.0;
-
-        // List of all available actions
-        // NOTE: Order matters for imperative planning
-        // AnalyzeNoteStructure runs FIRST to discover split/merge candidates
-        List<Action<CorpusState>> availableActions = List.of(
-            analyzeNoteStructureAction,  // FIRST - discovers split/merge candidates
-            normalizeFormattingAction,   // Fix basic formatting
-            computeEmbeddingsAction,     // Enable semantic search
-            suggestLinksAction           // Last - requires embeddings
+        // Use backward chaining from goals
+        List<PlannedAction> plannedActions = backwardChainingPlanner.planForGoals(
+            goals,
+            actions,
+            state
         );
 
-        // Evaluate each action
-        for (Action<CorpusState> action : availableActions) {
-            if (action.canExecute(state)) {
-                double cost = action.getCost(state);
+        // Calculate total cost
+        double totalCost = plannedActions.stream()
+            .mapToDouble(PlannedAction::getCost)
+            .sum();
 
-                PlannedAction plannedAction = PlannedAction.builder()
-                    .actionName(action.getName())
-                    .description(action.getDescription())
-                    .cost(cost)
-                    .safe(isSafeAction(action))
-                    .rationale(generateRationale(action, state))
-                    .affectedNotes(estimateAffectedNotes(action, state))
-                    .build();
-
-                plannedActions.add(plannedAction);
-                totalCost += cost;
-
-                log.info("Action '{}' is executable (cost: {}, safe: {}, affects {} notes)",
-                    action.getName(), cost, plannedAction.isSafe(), plannedAction.getAffectedNotes());
-            } else {
-                log.debug("Action '{}' cannot execute - preconditions not met", action.getName());
-            }
-        }
-
-        // Sort: safe actions first, then by cost (lower cost first)
+        // Sort: safe actions first (they're prerequisites), then by execution order
         plannedActions.sort((a, b) -> {
             if (a.isSafe() != b.isSafe()) {
                 return a.isSafe() ? -1 : 1;  // Safe actions first
             }
-            return Double.compare(a.getCost(), b.getCost());  // Then by cost
+            return 0;  // Maintain backward-chaining order within safe/proposal groups
         });
 
         String planRationale = generatePlanRationale(state, plannedActions);
 
-        log.info("Generated plan with {} actions (total cost: {})", plannedActions.size(), totalCost);
+        log.info("Generated GOAP plan with {} actions (total cost: {})",
+            plannedActions.size(), totalCost);
 
         return ActionPlan.builder()
             .actions(plannedActions)
@@ -96,59 +85,11 @@ public class GOAPPlanner {
     }
 
     /**
-     * Check if an action is safe (auto-applicable)
-     */
-    private boolean isSafeAction(Action<CorpusState> action) {
-        // Safe actions: ComputeEmbeddings, NormalizeFormatting
-        // Proposal/manual actions: AnalyzeNoteStructure (slow LLM analysis), SuggestLinks
-        String name = action.getName();
-        return name.equals("ComputeEmbeddings") ||
-               name.equals("NormalizeFormatting");
-    }
-
-    /**
-     * Generate rationale for why this action should be executed
-     */
-    private String generateRationale(Action<CorpusState> action, CorpusState state) {
-        return switch (action.getName()) {
-            case "AnalyzeNoteStructure" -> {
-                yield String.format("Analyze %d notes to discover split/merge candidates", state.getTotalNotes());
-            }
-            case "ComputeEmbeddings" -> {
-                int needsEmbeddings = state.getNotesNeedingEmbeddings();
-                yield String.format("Compute embeddings for %d notes (missing or stale)", needsEmbeddings);
-            }
-            case "NormalizeFormatting" -> {
-                int formatIssues = state.getNotesWithFormatIssues();
-                yield String.format("Fix formatting issues in %d notes", formatIssues);
-            }
-            case "SuggestLinks" -> {
-                int orphans = state.getOrphanNotes();
-                yield String.format("Suggest links for %d orphan notes to improve connectivity", orphans);
-            }
-            default -> action.getDescription();
-        };
-    }
-
-    /**
-     * Estimate how many notes this action would affect
-     */
-    private int estimateAffectedNotes(Action<CorpusState> action, CorpusState state) {
-        return switch (action.getName()) {
-            case "AnalyzeNoteStructure" -> state.getTotalNotes();  // Analyzes all notes
-            case "ComputeEmbeddings" -> state.getNotesNeedingEmbeddings();
-            case "NormalizeFormatting" -> state.getNotesWithFormatIssues();
-            case "SuggestLinks" -> state.getOrphanNotes();
-            default -> 0;
-        };
-    }
-
-    /**
      * Generate overall plan rationale
      */
     private String generatePlanRationale(CorpusState state, List<PlannedAction> actions) {
         if (actions.isEmpty()) {
-            return String.format("Corpus health is %.1f/%d. No actions needed at this time.",
+            return String.format("Corpus health is %.1f/%d. All goals satisfied - no actions needed.",
                 state.getMeanHealthScore(), targetHealth);
         }
 
@@ -156,11 +97,25 @@ public class GOAPPlanner {
         long safeCount = actions.stream().filter(PlannedAction::isSafe).count();
         long proposalCount = actions.size() - safeCount;
 
+        // List which goals are being addressed
+        StringBuilder goalSummary = new StringBuilder();
+        goalSummary.append("Addressing goals: ");
+        actions.stream()
+            .map(PlannedAction::getRationale)
+            .filter(r -> r != null && r.contains("goal:"))
+            .map(r -> r.substring(r.indexOf("goal:") + 6).trim())
+            .distinct()
+            .forEach(goal -> goalSummary.append(goal).append(", "));
+
+        String goalText = goalSummary.toString().replaceAll(", $", "");
+
         return String.format(
             "Corpus health is %.1f/%d (%.1f points below target). " +
-            "Generated %d actions: %d safe (auto-apply), %d proposals (require approval).",
+            "Generated %d actions via backward chaining: %d safe (auto-apply), %d proposals (require approval). " +
+            "%s",
             state.getMeanHealthScore(), targetHealth, healthGap,
-            actions.size(), safeCount, proposalCount
+            actions.size(), safeCount, proposalCount,
+            goalText
         );
     }
 }
