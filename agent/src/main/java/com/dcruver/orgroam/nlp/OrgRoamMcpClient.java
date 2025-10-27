@@ -68,7 +68,7 @@ public class OrgRoamMcpClient {
                     "arguments", Map.of(
                         "query", query,
                         "limit", limit,
-                        "threshold", threshold
+                        "cutoff", threshold  // MCP server expects "cutoff", not "threshold"
                     )
                 ))
                 .build();
