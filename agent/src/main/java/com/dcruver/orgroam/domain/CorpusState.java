@@ -43,11 +43,38 @@ public class CorpusState {
     private final Map<String, StructureAnalysis> structureAnalyses;  // noteId -> analysis
     private final Map<String, List<String>> mergeGroups;  // noteId -> similar note IDs
 
+    // Knowledge structure metadata (for GOAP knowledge improvement)
+    private final List<NoteCluster> orphanClusters;  // Groups of semantically related orphans
+    private final Map<String, ImplicitCategory> implicitCategories;  // Discovered themes (category name -> notes)
+    private final List<HubNoteCandidate> hubCandidates;  // Proposed MOC/hub notes to create
+    private final int totalOrphanClusters;
+    private final int categoriesWithoutMOC;
+
     /**
      * Get note by ID
      */
     public NoteMetadata getNote(String noteId) {
         return notesById.get(noteId);
+    }
+
+    /**
+     * Get orphan notes
+     */
+    public List<NoteMetadata> getOrphanNotes() {
+        return notes.stream()
+            .filter(n -> n.getLinkCount() == 0)
+            .toList();
+    }
+
+    /**
+     * Check if knowledge structure goals are met
+     */
+    public boolean hasFragmentation() {
+        return orphanClusters != null && !orphanClusters.isEmpty();
+    }
+
+    public boolean hasUnorganizedCategories() {
+        return categoriesWithoutMOC > 0;
     }
 
     /**

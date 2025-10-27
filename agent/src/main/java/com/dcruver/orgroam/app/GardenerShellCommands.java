@@ -300,16 +300,71 @@ public class GardenerShellCommands {
     @ShellMethod(key = "proposals apply", value = "Apply a specific proposal")
     public String proposalsApply(@ShellOption String id) {
         try {
-            // TODO: Implement proposal application
-            // 1. Get proposal
-            // 2. Apply patch
-            // 3. Mark as applied
+            // Get proposal details for display
+            ChangeProposal proposal = patchWriter.getProposal(id);
+            if (proposal == null) {
+                return "Proposal not found: " + id;
+            }
 
-            return "Proposal application not yet implemented";
+            // Apply the proposal
+            patchWriter.applyProposal(id);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("✓ Proposal applied successfully\n\n");
+            sb.append(String.format("Proposal: %s\n", proposal.getId()));
+            sb.append(String.format("Note: %s\n", proposal.getNoteId()));
+            sb.append(String.format("File: %s\n", proposal.getFilePath()));
+            sb.append(String.format("Action: %s\n\n", proposal.getActionName()));
+            sb.append("A backup was created before applying the changes.\n");
+            sb.append("The proposal has been marked as APPLIED.\n");
+
+            return sb.toString();
 
         } catch (Exception e) {
             log.error("Failed to apply proposal", e);
             return "Failed to apply proposal: " + e.getMessage();
+        }
+    }
+
+    @ShellMethod(key = "proposals apply-by-action", value = "Apply all proposals for a specific action type")
+    public String proposalsApplyByAction(@ShellOption String actionName) {
+        try {
+            List<ChangeProposal> allProposals = patchWriter.listProposals();
+            List<ChangeProposal> matchingProposals = allProposals.stream()
+                .filter(p -> p.getActionName().equals(actionName))
+                .toList();
+
+            if (matchingProposals.isEmpty()) {
+                return String.format("No pending proposals found for action: %s", actionName);
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(String.format("Applying %d %s proposals...\n\n",
+                matchingProposals.size(), actionName));
+
+            int succeeded = 0;
+            int failed = 0;
+
+            for (ChangeProposal proposal : matchingProposals) {
+                try {
+                    patchWriter.applyProposal(proposal.getId());
+                    sb.append(String.format("✓ %s (%s)\n",
+                        proposal.getNoteId(), proposal.getFilePath()));
+                    succeeded++;
+                } catch (Exception e) {
+                    sb.append(String.format("✗ %s: %s\n",
+                        proposal.getNoteId(), e.getMessage()));
+                    failed++;
+                }
+            }
+
+            sb.append(String.format("\n%d applied, %d failed\n", succeeded, failed));
+
+            return sb.toString();
+
+        } catch (Exception e) {
+            log.error("Failed to apply proposals by action", e);
+            return "Failed to apply proposals: " + e.getMessage();
         }
     }
 

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.UnifiedDiffUtils;
 import com.github.difflib.patch.Patch;
+import com.github.difflib.patch.PatchFailedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -226,6 +227,58 @@ public class PatchWriter {
                 }
             })
             .orElse(null);
+    }
+
+    /**
+     * Apply a proposal's patch to the target file
+     */
+    public void applyProposal(String proposalId) throws IOException {
+        ChangeProposal proposal = getProposal(proposalId);
+        if (proposal == null) {
+            throw new IOException("Proposal not found: " + proposalId);
+        }
+
+        if (proposal.getStatus() != ProposalStatus.PENDING) {
+            throw new IOException("Proposal is not pending: " + proposal.getStatus());
+        }
+
+        Path targetFile = Paths.get(proposal.getFilePath());
+        if (!Files.exists(targetFile)) {
+            throw new IOException("Target file not found: " + targetFile);
+        }
+
+        // Create backup before applying
+        createBackup(targetFile);
+
+        // Read current content
+        String currentContent = Files.readString(targetFile);
+        List<String> currentLines = currentContent.lines().toList();
+
+        // Parse and apply the patch
+        List<String> patchLines = proposal.getPatchContent().lines().toList();
+        Patch<String> patch = UnifiedDiffUtils.parseUnifiedDiff(patchLines);
+
+        List<String> result;
+        try {
+            result = DiffUtils.patch(currentLines, patch);
+        } catch (PatchFailedException e) {
+            throw new IOException("Failed to apply patch: " + e.getMessage(), e);
+        }
+
+        // Write the updated content
+        Files.writeString(targetFile, String.join("\n", result));
+
+        // Ensure final newline if the original had one or if required by Org format
+        if (currentContent.endsWith("\n") || !String.join("\n", result).endsWith("\n")) {
+            Files.writeString(targetFile, String.join("\n", result) + "\n");
+        } else {
+            Files.writeString(targetFile, String.join("\n", result));
+        }
+
+        // Mark as applied
+        markProposalApplied(proposalId);
+
+        log.info("Applied proposal {} to {}", proposalId, targetFile);
     }
 
     /**

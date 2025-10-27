@@ -354,6 +354,22 @@ public class CorpusScanner {
             .notesWithNonCanonicalTags(notesWithNonCanonicalTags)
             .staleNotes(staleNotes)
             .meanHealthScore(meanHealthScore)
+            // Knowledge structure fields (populated by GOAP actions)
+            .orphanClusters(null)
+            .implicitCategories(null)
+            .hubCandidates(null)
+            .totalOrphanClusters(0)
+            .categoriesWithoutMOC(0)
+            // Structure analysis fields
+            .notesWithMultipleTopics(0)
+            .notesTooSmall(0)
+            .notesTooLarge(0)
+            .splitCandidates(0)
+            .mergeCandidates(0)
+            .meanCoherence(0.0)
+            .meanTokenCount(0.0)
+            .structureAnalyses(null)
+            .mergeGroups(null)
             .build();
     }
 
@@ -372,6 +388,22 @@ public class CorpusScanner {
             .notesWithNonCanonicalTags(0)
             .staleNotes(0)
             .meanHealthScore(0.0)
+            // Knowledge structure fields
+            .orphanClusters(null)
+            .implicitCategories(null)
+            .hubCandidates(null)
+            .totalOrphanClusters(0)
+            .categoriesWithoutMOC(0)
+            // Structure analysis fields
+            .notesWithMultipleTopics(0)
+            .notesTooSmall(0)
+            .notesTooLarge(0)
+            .splitCandidates(0)
+            .mergeCandidates(0)
+            .meanCoherence(0.0)
+            .meanTokenCount(0.0)
+            .structureAnalyses(null)
+            .mergeGroups(null)
             .build();
     }
 
