@@ -261,6 +261,12 @@ public class OrgRoamMaintenanceAgent {
                 List<OrgRoamMcpClient.SemanticSearchResult> results =
                     mcpClient.semanticSearch(searchQuery, 10, 0.65);
 
+                // Handle null results from MCP
+                if (results == null) {
+                    log.warn("MCP returned null results for orphan {}", orphan.getNoteId());
+                    continue;
+                }
+
                 // Extract orphan IDs from results
                 List<String> similarOrphans = results.stream()
                     .filter(r -> r.getNodeId() != null && !r.getNodeId().equals(orphan.getNoteId()))

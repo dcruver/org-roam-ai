@@ -87,6 +87,12 @@ public class OrgRoamMcpClient {
                 return List.of();
             }
 
+            // Handle null result or null notes list
+            if (response.getResult() == null || response.getResult().getNotes() == null) {
+                log.warn("MCP returned null result or notes list for semantic search");
+                return List.of();
+            }
+
             return response.getResult().getNotes();
 
         } catch (Exception e) {
