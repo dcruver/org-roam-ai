@@ -121,7 +121,12 @@ public class OllamaChatService {
             - If :PROPERTIES: drawer is missing, add it at the top
             - If :ID: is missing, add it with the provided ID
             - If :CREATED: is missing, add it with current timestamp
-            - If title (level-1 heading) is missing, add one based on content
+            - **If title (level-1 heading) is missing, ALWAYS generate and add one:**
+              * Analyze the note content to understand the main topic/concept
+              * Create a concise, descriptive title (3-8 words) that captures the essence
+              * Use title case for the heading
+              * Examples: "Docker Container Networking", "Personal AI Infrastructure", "Linux Hotkeys Reference"
+              * Place it after the :PROPERTIES: drawer as "* Your Generated Title"
             - Preserve existing properties, links, and body content exactly
             - Ensure proper spacing between sections
 
@@ -148,11 +153,12 @@ public class OllamaChatService {
             Check for:
             1. Missing or malformed :PROPERTIES: drawer
             2. Missing required properties (:ID:, :CREATED:)
-            3. Missing or improper level-1 heading (* Title)
+            3. **Missing or improper level-1 heading (* Title)** - CRITICAL: Every note must have a descriptive title
             4. Improper spacing or structure
             5. Missing final newline
 
             Provide a concise list of issues found, or "No issues" if properly formatted.
+            If the title is missing, explicitly note: "Missing title heading"
             """;
 
         String userMessage = String.format("Analyze this Org-mode note:\n\n%s", noteContent);
