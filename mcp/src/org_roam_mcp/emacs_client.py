@@ -415,6 +415,15 @@ class EmacsClient:
                 match = re.search(r'(\d+)\s+processed', response_str)
                 count = int(match.group(1)) if match else 0
 
+            # Save all modified org-roam buffers to persist embeddings to disk
+            # This ensures the agent can immediately see the updated files
+            save_cmd = f'emacsclient --server-file={self.server_file} -e "(save-some-buffers t (lambda () (and (buffer-file-name) (string-match-p \\"\\\\.org\\$\\" (buffer-file-name)))))"'
+            try:
+                self._execute_command(save_cmd)
+                logger.info(f"Saved all modified org-roam buffers")
+            except Exception as save_err:
+                logger.warning(f"Failed to save buffers after embedding generation: {save_err}")
+
             return {
                 "success": True,
                 "count": count,
