@@ -153,6 +153,15 @@ public class CorpusScanner {
             }
         }
 
+        // Check for chunk-level embeddings (heading-level) if not found at file level
+        // org-roam-semantic stores embeddings in :PROPERTIES: at each top-level (*) heading
+        if (!hasEmbeddings && orgNote.getRawContent() != null) {
+            if (orgNote.getRawContent().contains(":EMBEDDING:")) {
+                hasEmbeddings = true;
+                log.debug("Found chunk-level embeddings for note {}", orgNote.getNoteId());
+            }
+        }
+
         // Check format - use LLM if available (with caching), otherwise simple check
         boolean formatOk = checkFormatWithLLM(orgNote, filePath);
         boolean hasProperties = orgNote.isHasPropertiesDrawer();
