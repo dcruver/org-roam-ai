@@ -46,7 +46,47 @@ class EmacsClient:
             logger.warning(f"Server file does not exist: {self.server_file}")
         logger.info(f"Current user HOME: {os.path.expanduser('~')}")
         logger.info(f"Current working directory: {os.getcwd()}")
-    
+
+        # Load required Emacs packages from local directory
+        self._load_emacs_packages()
+
+    def _load_emacs_packages(self) -> None:
+        """Load required elisp packages from local emacs/ directory."""
+        try:
+            # Get path to emacs directory relative to this file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            emacs_dir = os.path.join(current_dir, '..', '..', '..', 'emacs')
+
+            logger.info(f"Loading Emacs packages from: {emacs_dir}")
+
+            # Load packages in dependency order
+            packages = [
+                'org-roam-vector-search.el',
+                'org-roam-ai-assistant.el',
+                'org-roam-api.el'
+            ]
+
+            for package in packages:
+                package_path = os.path.join(emacs_dir, package)
+                if os.path.exists(package_path):
+                    logger.info(f"Loading package: {package}")
+                    # Load the elisp file
+                    load_expr = f'(load-file "{self._escape_for_elisp(package_path)}")'
+                    try:
+                        result = self.eval_elisp(load_expr)
+                        logger.info(f"Successfully loaded {package}")
+                    except EmacsClientError as e:
+                        logger.warning(f"Failed to load {package}: {e}")
+                        # Continue with other packages even if one fails
+                else:
+                    logger.warning(f"Package file not found: {package_path}")
+
+            logger.info("Emacs package loading complete")
+
+        except Exception as e:
+            logger.error(f"Error loading Emacs packages: {e}")
+            # Don't fail initialization, just log the error
+
     def _escape_for_elisp(self, value: str) -> str:
         """Escape string for safe elisp evaluation.
         
