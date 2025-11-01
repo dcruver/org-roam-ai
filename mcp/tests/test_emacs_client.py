@@ -102,8 +102,46 @@ class TestEmacsClient:
         """Test parsing invalid JSON response."""
         with pytest.raises(EmacsClientError) as exc_info:
             client._parse_json_response('invalid json')
-        
+
         assert 'Failed to parse JSON' in str(exc_info.value)
+
+    def test_parse_json_response_with_control_characters(self, client):
+        """Test parsing JSON with literal newlines and control characters.
+
+        This simulates the issue where Emacs json-encode outputs strings
+        with literal newlines instead of escaped \\n sequences.
+        """
+        # JSON with literal newlines in string value (invalid JSON)
+        response_with_literal_newlines = '''{"success": true, "content": "line1
+line2
+line3", "data": "test"}'''
+
+        result = client._parse_json_response(response_with_literal_newlines)
+        assert result["success"] is True
+        assert "line1\\nline2\\nline3" in result["content"] or "line1\nline2\nline3" in result["content"]
+        assert result["data"] == "test"
+
+    def test_parse_json_response_with_org_file_content(self, client):
+        """Test parsing JSON with org file content containing properties and embeddings.
+
+        This simulates the real-world case where semantic_search returns
+        full_content with :PROPERTIES: blocks and literal newlines.
+        """
+        # Simulated response from semantic_search with org file content
+        response_with_org_content = '''{"success": true, "notes": [{"id": "123", "full_content": ":PROPERTIES:
+:ID: 123
+:EMBEDDING: [0.1, 0.2, 0.3]
+:END:
+#+title: Test Note
+
+Content here"}]}'''
+
+        result = client._parse_json_response(response_with_org_content)
+        assert result["success"] is True
+        assert len(result["notes"]) == 1
+        assert "PROPERTIES" in result["notes"][0]["full_content"]
+        assert "EMBEDDING" in result["notes"][0]["full_content"]
+        assert "Test Note" in result["notes"][0]["full_content"]
     
     @patch.object(EmacsClient, 'eval_elisp')
     def test_contextual_search(self, mock_eval, client):
@@ -140,14 +178,15 @@ class TestEmacsClient:
     def test_add_daily_entry_success(self, mock_eval, client):
         """Test successful daily entry addition."""
         mock_eval.return_value = None  # Function returns nil on success
-        
+
         result = client.add_daily_entry(
-            "14:30", "Test Entry", ["point1", "point2"], 
+            "14:30", "Test Entry", ["point1", "point2"],
             ["step1"], ["tag1"], "journal"
         )
-        
+
+        # Note: entry_type is NOT passed to elisp - it's used client-side for title formatting only
         expected_expr = ('(my/add-daily-entry-structured "14:30" "Test Entry" '
-                        '(list "point1" "point2") (list "step1") (list "tag1") "journal")')
+                        '(list "point1" "point2") (list "step1") (list "tag1"))')
         mock_eval.assert_called_once_with(expected_expr)
         assert result["success"] is True
     

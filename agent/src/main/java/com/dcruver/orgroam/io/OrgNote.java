@@ -62,11 +62,13 @@ public class OrgNote {
 
     /**
      * Check if formatting is OK
+     * Checks for: properties drawer, title, ID, CREATED property, and final newline
      */
     public boolean isFormattingOk() {
         return hasPropertiesDrawer
             && title != null && !title.isBlank()
             && noteId != null && !noteId.isBlank()
+            && created != null  // CRITICAL: Verify :CREATED: property exists
             && rawContent != null && rawContent.endsWith("\n");
     }
 }

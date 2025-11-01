@@ -123,34 +123,99 @@ class EmacsClient:
             error_msg = f"Failed to execute emacsclient: {e}"
             logger.error(error_msg)
             raise EmacsClientError(error_msg) from e
-    
-    def _parse_json_response(self, response: str) -> Dict[str, Any]:
-        """Parse JSON response from elisp function.
-        
+
+    def _parse_json_with_control_char_fix(self, json_str: str) -> Dict[str, Any]:
+        """Parse JSON string with control character escaping.
+
         Args:
-            response: Raw response string
-            
+            json_str: JSON string potentially containing unescaped control characters
+
         Returns:
             Parsed JSON data
-            
+
+        Raises:
+            json.JSONDecodeError: If parsing fails even after fixing
+        """
+        # Simple approach: replace literal control characters with their escape sequences
+        # This works because json-encode in elisp escapes SOME things but not others
+        cleaned = json_str.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+
+        # Also escape other control characters
+        result = []
+        for char in cleaned:
+            if ord(char) < 32 and char not in '\n\r\t':  # Already replaced above
+                result.append(f'\\u{ord(char):04x}')
+            else:
+                result.append(char)
+
+        cleaned = ''.join(result)
+        return json.loads(cleaned)
+
+    def _parse_json_response(self, response: str) -> Dict[str, Any]:
+        """Parse JSON response from elisp function.
+
+        Args:
+            response: Raw response string
+
+        Returns:
+            Parsed JSON data
+
         Raises:
             EmacsClientError: If JSON parsing fails
         """
         try:
             # Handle case where response might be a character array
             parsed = json.loads(response)
-            
+
+            # emacsclient returns quoted strings, so if the elisp function
+            # returns a JSON string, we get ""{"success":true,...}"" which
+            # json.loads() parses to a string. Parse it again if needed.
+            if isinstance(parsed, str):
+                try:
+                    parsed = json.loads(parsed)
+                except json.JSONDecodeError:
+                    # The inner string might have control characters - use the cleaning logic
+                    parsed = self._parse_json_with_control_char_fix(parsed)
+
             # Check if we got a character array (keys are numbers)
             if isinstance(parsed, dict) and all(key.isdigit() for key in parsed.keys()):
                 # Reconstruct string from character array
                 reconstructed = ''.join(parsed[str(i)] for i in sorted(int(k) for k in parsed.keys()))
                 parsed = json.loads(reconstructed)
-            
+
             return parsed
         except json.JSONDecodeError as e:
-            error_msg = f"Failed to parse JSON response: {e}. Raw response: {response[:500]}"
-            logger.error(error_msg)
-            raise EmacsClientError(error_msg) from e
+            # Emacs json-encode doesn't always properly escape control characters in strings
+            # This is particularly problematic with full_content fields containing org files
+            logger.warning(f"Initial JSON parse failed: {e}. Attempting to fix control characters...")
+
+            try:
+                # Log the problematic area for debugging
+                error_pos = getattr(e, 'pos', 0)
+                snippet_start = max(0, error_pos - 100)
+                snippet_end = min(len(response), error_pos + 100)
+                logger.debug(f"Parse error at position {error_pos}")
+                logger.debug(f"Context: {repr(response[snippet_start:snippet_end])}")
+
+                # Use the control character fixing method
+                parsed = self._parse_json_with_control_char_fix(response)
+                logger.info("Successfully parsed after fixing control characters in strings")
+
+                # After fixing, check if we got a string (double-quoted by emacsclient)
+                if isinstance(parsed, str):
+                    try:
+                        parsed = json.loads(parsed)
+                    except json.JSONDecodeError:
+                        # Still has control characters in the inner string
+                        parsed = self._parse_json_with_control_char_fix(parsed)
+
+                return parsed
+
+            except Exception as e2:
+                error_msg = f"Failed to parse JSON response: {e}. Raw response (first 1000 chars): {response[:1000]}"
+                logger.error(error_msg)
+                logger.error(f"Cleaning attempt also failed: {e2}")
+                raise EmacsClientError(error_msg) from e
     
     def eval_elisp(self, expression: str) -> Dict[str, Any]:
         """Evaluate elisp expression and return parsed JSON response.
