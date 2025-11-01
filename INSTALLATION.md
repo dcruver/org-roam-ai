@@ -1,6 +1,6 @@
 # Server Installation Guide
 
-Complete guide for installing the org-roam-ai stack on a server.
+Complete guide for installing the org-roam-ai integrated stack on a server.
 
 ## Quick Start
 
@@ -21,25 +21,23 @@ GITEA_TOKEN=your_token \
 
 ## What Gets Installed
 
-The installation script sets up the complete stack:
+The installation script sets up the integrated stack:
 
 1. **Ollama** - Local LLM backend
-   - Service: `ollama.service`
-   - Models: `nomic-embed-text:latest`, `llama3.1:8b`
-   - Port: 11434
+    - Service: `ollama.service`
+    - Models: `nomic-embed-text:latest`, `llama3.1:8b`
+    - Port: 11434
 
 2. **MCP Server** (Python)
-   - Service: `org-roam-mcp.service`
-   - Port: 8000
-   - Virtual env: `/opt/org-roam-ai/mcp/.venv`
+    - Service: `org-roam-mcp.service`
+    - Port: 8000
+    - Virtual env: `/opt/org-roam-ai/mcp/.venv`
+    - Automatically loads integrated Emacs packages
 
-3. **GOAP Agent** (Java)
-   - Service: `org-roam-agent.service`
-   - JAR: `/opt/org-roam-ai/agent/embabel-note-gardener.jar`
-
-4. **Emacs Components** (manual configuration required)
-   - org-roam-semantic (vector search)
-   - org-roam-ai-assistant (AI enhancements)
+3. **Integrated Emacs Packages** (loaded automatically)
+    - org-roam-vector-search (semantic search)
+    - org-roam-ai-assistant (AI enhancements)
+    - org-roam-api (MCP integration)
 
 ## Prerequisites
 
@@ -64,31 +62,15 @@ The script doesn't configure Emacs automatically. You need to:
   (org-roam-db-autosync-mode))
 ```
 
-**Install org-roam-semantic (via straight.el - recommended):**
+**Configure Ollama (optional - for AI features):**
 ```elisp
-;; Install from GitHub
-(straight-use-package
-  '(org-roam-semantic :host github :repo "dcruver/org-roam-semantic"))
-
-;; Load both modules
-(require 'org-roam-vector-search)
-(require 'org-roam-ai-assistant)
-
-;; Configure Ollama
+;; Configure Ollama connection (if using AI features)
 (customize-set-variable 'org-roam-semantic-ollama-url "http://localhost:11434")
 (customize-set-variable 'org-roam-semantic-embedding-model "nomic-embed-text")
 (customize-set-variable 'org-roam-semantic-generation-model "llama3.1:8b")
-
-;; Generate embeddings for existing notes
-(org-roam-semantic-generate-all-embeddings)
 ```
 
-For full installation options, see: https://github.com/dcruver/org-roam-semantic
-
-**Load org-roam API (for MCP):**
-```elisp
-(load-file "/opt/org-roam-ai/mcp/org-roam-api.el")
-```
+**Note:** The MCP server automatically loads the integrated Emacs packages. No manual loading required.
 
 **Start Emacs server:**
 ```bash
@@ -101,19 +83,14 @@ emacs --daemon
 
 ### 2. Environment Variables
 
-The systemd services use these environment variables (configured in the script):
+The systemd service uses these environment variables (configured in the script):
 
 **MCP Service:**
 - `EMACS_SERVER_FILE`: Path to Emacs server socket
 
-**Agent Service:**
-- `ORG_ROAM_PATH`: Directory containing .org files
-- `OLLAMA_BASE_URL`: Ollama API endpoint
-
-To customize, edit the service files:
+To customize, edit the service file:
 ```bash
 sudo systemctl edit org-roam-mcp.service
-sudo systemctl edit org-roam-agent.service
 ```
 
 ## Post-Installation
@@ -124,10 +101,6 @@ sudo systemctl edit org-roam-agent.service
 # Start MCP server
 sudo systemctl start org-roam-mcp
 sudo systemctl enable org-roam-mcp
-
-# Start agent (requires MCP running)
-sudo systemctl start org-roam-agent
-sudo systemctl enable org-roam-agent
 ```
 
 ### Verify Installation
@@ -145,7 +118,6 @@ emacsclient --eval '(+ 1 1)'
 
 # Check service logs
 journalctl -u org-roam-mcp -f
-journalctl -u org-roam-agent -f
 ```
 
 ### Test Semantic Search
@@ -168,7 +140,7 @@ M-x org-roam-node-find RET test note RET
 ┌─────────────────────────────────────────────────────────────┐
 │ Emacs + org-roam                                            │
 │ - org-roam database                                         │
-│ - org-roam-semantic (embeddings)                            │
+│ - Integrated packages (vector search, AI assistant)         │
 │ - Server socket: ~/emacs-server/server                      │
 └────────────────────────┬────────────────────────────────────┘
                          │ emacsclient
@@ -178,14 +150,7 @@ M-x org-roam-node-find RET test note RET
 │ - HTTP JSON-RPC API                                         │
 │ - Semantic search                                           │
 │ - Note creation                                             │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTP
-┌────────────────────────▼────────────────────────────────────┐
-│ GOAP Agent (Java)                                           │
-│ Service: org-roam-agent.service                             │
-│ - Corpus auditing                                           │
-│ - Format normalization                                      │
-│ - Link suggestions                                          │
+│ - AI enhancements                                           │
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP
 ┌────────────────────────▼────────────────────────────────────┐
@@ -204,23 +169,14 @@ M-x org-roam-node-find RET test note RET
 cd /opt/org-roam-ai
 git pull
 
-# Update MCP
+# Update MCP server
 cd mcp
 source .venv/bin/activate
 pip install -e ".[dev]"
 deactivate
 
-# Update Agent (if GITEA_TOKEN set)
-cd ../agent
-GITEA_TOKEN=your_token ../scripts/deploy-agent.sh
-
-# Or rebuild from source
-./mvnw clean package -DskipTests
-cp target/embabel-note-gardener-*.jar embabel-note-gardener.jar
-
-# Restart services
+# Restart service
 sudo systemctl restart org-roam-mcp
-sudo systemctl restart org-roam-agent
 ```
 
 ### Update Individual Components
@@ -235,21 +191,12 @@ pip install -e ".[dev]"
 sudo systemctl restart org-roam-mcp
 ```
 
-**Agent:**
-```bash
-cd /opt/org-roam-ai/agent
-# Download from Gitea
-GITEA_TOKEN=your_token ./scripts/deploy-agent.sh
-sudo systemctl restart org-roam-agent
-```
-
 **Emacs packages:**
 ```bash
 cd /opt/org-roam-ai
 git pull
-# Reload in Emacs
-M-x load-file RET /opt/org-roam-ai/emacs/org-roam-vector-search.el
-M-x load-file RET /opt/org-roam-ai/emacs/org-roam-ai-assistant.el
+# Packages are automatically loaded by MCP server
+# No manual reload required
 ```
 
 ## Troubleshooting
@@ -269,26 +216,7 @@ journalctl -u org-roam-mcp -n 50
 **Common issues:**
 - Emacs server not running → Start with `emacs --daemon`
 - Wrong server file path → Check `EMACS_SERVER_FILE` in service
-- org-roam-api.el not loaded → Load in Emacs init
-
-### Agent Service Won't Start
-
-**Check MCP is running:**
-```bash
-curl http://localhost:8000
-sudo systemctl status org-roam-mcp
-```
-
-**Check Ollama:**
-```bash
-curl http://localhost:11434/api/tags
-ollama list
-```
-
-**Check logs:**
-```bash
-journalctl -u org-roam-agent -n 50
-```
+- org-roam not configured → Set up org-roam in Emacs
 
 ### Ollama Connection Issues
 
@@ -308,9 +236,9 @@ ollama pull llama3.1:8b
 
 ```bash
 # Stop and disable services
-sudo systemctl stop org-roam-mcp org-roam-agent
-sudo systemctl disable org-roam-mcp org-roam-agent
-sudo rm /etc/systemd/system/org-roam-{mcp,agent}.service
+sudo systemctl stop org-roam-mcp
+sudo systemctl disable org-roam-mcp
+sudo rm /etc/systemd/system/org-roam-mcp.service
 sudo systemctl daemon-reload
 
 # Remove installation directory
@@ -325,8 +253,6 @@ curl -fsSL https://ollama.com/install.sh | sh -s uninstall
 ## Configuration Files
 
 - **MCP Service**: `/etc/systemd/system/org-roam-mcp.service`
-- **Agent Service**: `/etc/systemd/system/org-roam-agent.service`
-- **Agent Config**: `/opt/org-roam-ai/agent/src/main/resources/application.yml`
 - **Emacs Server**: `~/emacs-server/server`
 
 ## Support
