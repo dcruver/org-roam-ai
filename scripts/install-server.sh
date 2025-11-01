@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# org-roam-ai Stack Installation Script
-# Installs Emacs, org-roam, MCP server, and GOAP agent
+# org-roam-ai Installation Script
+# Installs Emacs, org-roam, and MCP server with integrated packages
 
 # Configuration
 INSTALL_DIR="${INSTALL_DIR:-/opt/org-roam-ai}"
@@ -77,7 +77,7 @@ ollama pull llama3.1:8b  # or gpt-oss:20b if available
 echo_success "Ollama configured"
 
 # ============================================================================
-# 3. Check Emacs and org-roam-semantic
+# 3. Check Emacs and org-roam
 # ============================================================================
 echo_info "Step 3/6: Checking Emacs installation..."
 
@@ -87,42 +87,32 @@ if ! command -v emacs >/dev/null 2>&1; then
     echo_info "Please install Emacs first:"
     echo_info "  sudo apt install emacs"
     echo ""
-    echo_info "Then configure org-roam and org-roam-semantic before running this script."
+    echo_info "Then configure org-roam before running this script."
     echo_info "See: https://github.com/org-roam/org-roam"
-    echo_info "     https://github.com/dcruver/org-roam-semantic"
     exit 1
 fi
 
 EMACS_VERSION=$(emacs --version | head -n1)
 echo_info "Found: ${EMACS_VERSION}"
 
-# Check if org-roam-semantic is installed
-echo_info "Checking for org-roam-semantic package..."
+# Check if org-roam is installed
+echo_info "Checking for org-roam package..."
 
-# Try to check if org-roam-semantic is available in Emacs
-if emacs --batch --eval "(require 'org-roam-semantic)" 2>/dev/null; then
-    echo_success "org-roam-semantic is installed"
-elif emacs --batch --eval "(require 'org-roam-vector-search)" 2>/dev/null; then
-    echo_success "org-roam-vector-search is installed"
+# Try to check if org-roam is available in Emacs
+if emacs --batch --eval "(require 'org-roam)" 2>/dev/null; then
+    echo_success "org-roam is installed"
 else
-    echo_error "org-roam-semantic is not installed in Emacs"
+    echo_error "org-roam is not installed in Emacs"
     echo ""
-    echo_info "Please install org-roam-semantic before running this script."
+    echo_info "Please install and configure org-roam before running this script."
     echo ""
-    echo_info "Installation instructions (via straight.el - recommended):"
-    echo_info "Add to your Emacs init file:"
-    echo ""
-    echo_info "  (straight-use-package"
-    echo_info "    '(org-roam-semantic :host github :repo \"dcruver/org-roam-semantic\"))"
+    echo_info "Installation instructions (via package.el or straight.el):"
+    echo_info "  M-x package-install RET org-roam RET"
     echo_info ""
-    echo_info "  (require 'org-roam-vector-search)"
-    echo_info "  (require 'org-roam-ai-assistant)"
+    echo_info "Or via straight.el:"
+    echo_info "  (straight-use-package 'org-roam)"
     echo_info ""
-    echo_info "  (customize-set-variable 'org-roam-semantic-ollama-url"
-    echo_info "                          \"http://localhost:11434\")"
-    echo ""
-    echo_info "Restart Emacs and verify: M-x org-roam-semantic-status"
-    echo_info "Full instructions: https://github.com/dcruver/org-roam-semantic"
+    echo_info "Full instructions: https://github.com/org-roam/org-roam"
     echo ""
     exit 1
 fi
@@ -188,43 +178,9 @@ else
 fi
 
 # ============================================================================
-# 6. Install Agent (Java)
+# 6. Create Systemd Services
 # ============================================================================
-echo_info "Step 6/6: Installing GOAP agent..."
-
-# Check Java version
-if command -v java >/dev/null 2>&1; then
-    JAVA_VERSION=$(java -version 2>&1 | head -n1)
-    echo_info "Found: ${JAVA_VERSION}"
-
-    # Check if Java 21+
-    JAVA_MAJOR=$(java -version 2>&1 | grep -oP 'version "\K\d+')
-    if [ "$JAVA_MAJOR" -lt 21 ]; then
-        echo_error "Java 21 or higher required (found Java ${JAVA_MAJOR})"
-        echo_info "Install with: sudo apt install openjdk-21-jdk"
-        exit 1
-    fi
-else
-    echo_error "Java not found"
-    echo_info "Install with: sudo apt install openjdk-21-jdk"
-    exit 1
-fi
-
-# Download JAR from Gitea or build locally
-cd "${INSTALL_DIR}/agent"
-
-if [ -n "$GITEA_TOKEN" ]; then
-    echo_info "Downloading agent JAR from Gitea..."
-    curl -u "${GITEA_USER}:${GITEA_TOKEN}" \
-        -o embabel-note-gardener.jar \
-        "https://gitea.cruver.network/api/packages/${GITEA_USER}/maven/com/dcruver/embabel-note-gardener/0.1.0-SNAPSHOT/embabel-note-gardener-0.1.0-SNAPSHOT.jar"
-    echo_success "Agent JAR downloaded"
-else
-    echo_warn "GITEA_TOKEN not set, building from source..."
-    ./mvnw clean package -DskipTests
-    cp target/embabel-note-gardener-*.jar embabel-note-gardener.jar
-    echo_success "Agent JAR built"
-fi
+echo_info "Step 6/6: Creating systemd services..."
 
 # ============================================================================
 # Create Systemd Services
@@ -251,27 +207,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Agent Service
-sudo tee /etc/systemd/system/org-roam-agent.service > /dev/null <<EOF
-[Unit]
-Description=org-roam GOAP Agent
-After=network.target org-roam-mcp.service
-Requires=org-roam-mcp.service
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=${INSTALL_DIR}/agent
-Environment="ORG_ROAM_PATH=${ORG_ROAM_PATH}"
-Environment="OLLAMA_BASE_URL=http://localhost:11434"
-ExecStart=/usr/bin/java -jar ${INSTALL_DIR}/agent/embabel-note-gardener.jar --spring.profiles.active=auto
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 sudo systemctl daemon-reload
 echo_success "Systemd services created"
 
@@ -288,24 +223,19 @@ echo_info "org-roam Notes: ${ORG_ROAM_PATH}"
 echo ""
 echo_info "Next Steps:"
 echo ""
-echo "1. Configure Emacs with org-roam and org-roam-semantic:"
-echo "   - Add ${INSTALL_DIR}/emacs to your Emacs load-path"
-echo "   - Load org-roam-vector-search.el and org-roam-ai-assistant.el"
+echo "1. Configure Emacs with org-roam:"
+echo "   - Ensure org-roam is installed and configured"
 echo "   - Start Emacs server: emacs --daemon"
 echo ""
-echo "2. Start services:"
+echo "2. Start MCP service:"
 echo "   sudo systemctl start org-roam-mcp"
-echo "   sudo systemctl start org-roam-agent"
 echo ""
-echo "3. Enable services at boot:"
+echo "3. Enable service at boot:"
 echo "   sudo systemctl enable org-roam-mcp"
-echo "   sudo systemctl enable org-roam-agent"
 echo ""
 echo "4. Check status:"
 echo "   sudo systemctl status org-roam-mcp"
-echo "   sudo systemctl status org-roam-agent"
 echo "   journalctl -u org-roam-mcp -f"
-echo "   journalctl -u org-roam-agent -f"
 echo ""
 echo "5. Test MCP server:"
 echo "   curl http://localhost:8000"
