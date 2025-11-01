@@ -1,84 +1,66 @@
 # org-roam-ai
 
-**AI-powered knowledge base maintenance for org-roam**
+**AI-powered knowledge base management for org-roam**
 
-Transform your org-roam knowledge base with semantic search, intelligent AI assistance, and automated maintenance through a three-tier architecture that combines Emacs integration, API services, and autonomous planning.
+Transform your org-roam knowledge base with semantic search, intelligent AI assistance, and API services through an integrated architecture that combines Emacs packages with external tool access.
 
 ## What is org-roam-ai?
 
-org-roam-ai provides AI-powered automation and API services for [org-roam](https://www.orgroam.com/) knowledge bases with [org-roam-semantic](https://github.com/dcruver/org-roam-semantic):
+org-roam-ai provides AI-powered semantic search and API services for [org-roam](https://www.orgroam.com/) knowledge bases:
 
-- **MCP Server**: HTTP/stdio API for semantic search, note creation, and automation workflows
-- **GOAP Agent**: Autonomous maintenance with LLM-powered format fixing and link suggestions
+- **Integrated Emacs Packages**: Semantic search, AI assistance, and API functions
+- **MCP Server**: HTTP/stdio API for automation workflows and external integrations
 - **External Integration**: Powers n8n workflows, chatbots, and external tool access
 
-**Prerequisite**: [org-roam-semantic](https://github.com/dcruver/org-roam-semantic) must be installed for semantic search and AI features
+**All Components Included**: No external dependencies - everything is integrated in this monorepo
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  org-roam-semantic (External Prerequisite)                      │
-│  https://github.com/dcruver/org-roam-semantic                   │
-│  - Vector search within Emacs                                   │
-│  - AI-powered note enhancement                                  │
-│  - Embedding storage as org properties                          │
+│  Integrated Emacs Packages (emacs/)                             │
+│  - org-roam-vector-search: Semantic search & embeddings         │
+│  - org-roam-ai-assistant: AI enhancement & analysis             │
+│  - org-roam-api: MCP integration functions                      │
 │  - Interactive commands (C-c v, C-c a)                          │
 └────────────────────────┬────────────────────────────────────────┘
                          │ emacsclient
 ┌────────────────────────▼────────────────────────────────────────┐
 │  org-roam-mcp (Python) - MCP Server                             │
 │  - HTTP/stdio MCP protocol server                               │
-│  - Semantic search API (via org-roam-semantic)                  │
+│  - Loads and wraps integrated elisp functions                  │
+│  - Semantic search API with embeddings                          │
 │  - Note creation with auto-embedding                            │
 │  - Integration with n8n, external tools                         │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ HTTP JSON-RPC
-┌────────────────────────▼────────────────────────────────────────┐
-│  org-roam-agent (Java) - GOAP Maintenance Agent                 │
-│  - Autonomous corpus maintenance                                │
-│  - LLM-powered format analysis & fixing                         │
-│  - Link suggestion via semantic search                          │
-│  - Health scoring & action planning                             │
-│  - Spring Shell interactive CLI                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Overview
 
-**[org-roam-semantic](https://github.com/dcruver/org-roam-semantic) - Prerequisite**
-- Elisp package providing semantic search and AI assistance
-- **Must be installed separately** via straight.el
-- Provides the foundation for semantic operations
-- See: https://github.com/dcruver/org-roam-semantic
+**[emacs/](emacs/) - Integrated Emacs Packages**
+- `org-roam-vector-search.el`: Semantic search and vector embeddings
+- `org-roam-ai-assistant.el`: AI-powered note enhancement and analysis
+- `org-roam-api.el`: MCP integration functions
+- Automatically loaded by the MCP server
 
 **[mcp/](mcp/README.md) - MCP Server**
 - Python-based Model Context Protocol server
 - HTTP and stdio transport modes
-- Wraps org-roam-semantic functions for API access
+- Loads and wraps integrated Emacs functions
 - Powers n8n workflows and external integrations
-
-**[agent/](agent/README.md) - Maintenance Agent**
-- Java/Spring Boot GOAP planning agent
-- Autonomous knowledge base maintenance
-- LLM-powered formatting, linking, and health analysis
-- Calls MCP server for semantic operations
 
 ## Quick Start
 
 ### Prerequisites
 
-**Required for all components:**
-1. **[org-roam-semantic](https://github.com/dcruver/org-roam-semantic)** - Install first via straight.el:
-   ```elisp
-   (straight-use-package
-     '(org-roam-semantic :host github :repo "dcruver/org-roam-semantic"))
-
-   (require 'org-roam-vector-search)
-   (require 'org-roam-ai-assistant)
+**Required:**
+1. **Ollama** with required models:
+   ```bash
+   ollama pull nomic-embed-text    # For semantic embeddings
+   ollama pull llama3.1:8b         # For AI text generation
    ```
 
-2. **Ollama** with required models:
+2. **Emacs** with org-roam installed
    ```bash
    ollama pull nomic-embed-text    # For embeddings
    ollama pull llama3.1:8b         # For AI generation
