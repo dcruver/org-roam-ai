@@ -70,11 +70,18 @@ class EmacsClient:
                 package_path = os.path.join(emacs_dir, package)
                 if os.path.exists(package_path):
                     logger.info(f"Loading package: {package}")
-                    # Load the elisp file
-                    load_expr = f'(load-file "{self._escape_for_elisp(package_path)}")'
+                    # Load the elisp file - load-file returns t on success, not JSON
+                    # Use double quotes and escape them properly for shell
+                    load_expr = f'(load-file "{package_path}")'
                     try:
-                        result = self.eval_elisp(load_expr)
-                        logger.info(f"Successfully loaded {package}")
+                        # Use _execute_command directly since load-file doesn't return JSON
+                        # Use single quotes around the elisp expression to avoid shell interpretation
+                        command = f"emacsclient --server-file={self.server_file} -e '{load_expr}'"
+                        response = self._execute_command(command)
+                        if response.strip() == 't':
+                            logger.info(f"Successfully loaded {package}")
+                        else:
+                            logger.warning(f"Unexpected response loading {package}: {response}")
                     except EmacsClientError as e:
                         logger.warning(f"Failed to load {package}: {e}")
                         # Continue with other packages even if one fails
