@@ -36,12 +36,10 @@ This server wraps existing org-roam elisp functions via `emacsclient`, providing
 pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
 ```
 
-**Install from Gitea Package Registry:**
+**Install from GitHub Packages:**
 
 ```bash
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
-  --trusted-host gitea-backend.cruver.network \
-  org-roam-mcp
+pip install --index-url https://pypi.pkg.github.com/dcruver org-roam-mcp
 ```
 
 ### For Developers

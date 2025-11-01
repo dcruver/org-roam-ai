@@ -1,6 +1,6 @@
 #!/bin/bash
-# Create a new release of org-roam-ai
-# This script tags the release, builds artifacts, and prepares for Gitea release
+# Create a new release of org-roam-ai MCP server
+# This script tags the release, builds MCP artifacts, and prepares for GitHub release
 
 set -e
 
@@ -15,7 +15,7 @@ TAG="v${VERSION}"
 
 cd "$(dirname "$0")/.."
 
-echo "Creating release ${TAG}..."
+echo "Creating MCP server release ${TAG}..."
 echo ""
 
 # Check for uncommitted changes
@@ -31,13 +31,13 @@ echo "1. Updating version numbers..."
 sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" mcp/pyproject.toml
 echo "   ✓ Updated mcp/pyproject.toml"
 
-# Update Agent version
-sed -i "s/<version>.*-SNAPSHOT<\/version>/<version>${VERSION}<\/version>/" agent/pom.xml
-echo "   ✓ Updated agent/pom.xml"
 
-# Update Emacs version
-sed -i "s/;; Version: .*/;; Version: ${VERSION}/" emacs/org-roam-vector-search.el
-echo "   ✓ Updated emacs/org-roam-vector-search.el"
+
+# Update Emacs package versions
+sed -i "s/;; Version: .*/;; Version: ${VERSION}/" packages/org-roam-ai/org-roam-vector-search.el
+sed -i "s/;; Version: .*/;; Version: ${VERSION}/" packages/org-roam-ai/org-roam-ai-assistant.el
+sed -i "s/;; Version: .*/;; Version: ${VERSION}/" packages/org-roam-ai/org-roam-api.el
+echo "   ✓ Updated Emacs package versions"
 
 echo ""
 
@@ -51,22 +51,13 @@ python -m build
 cd ..
 echo "   ✓ MCP package built"
 
-# Build Agent
-echo "   Building Agent JAR..."
-cd agent
-mvn clean package -DskipTests
-cp target/embabel-note-gardener-${VERSION}.jar \
-   ../release/embabel-note-gardener-${VERSION}.jar || \
-cp target/embabel-note-gardener-*-SNAPSHOT.jar \
-   ../release/embabel-note-gardener-${VERSION}.jar
-cd ..
-echo "   ✓ Agent JAR built"
+
 
 echo ""
 
 # Commit version changes
 echo "3. Committing version changes..."
-git add mcp/pyproject.toml agent/pom.xml emacs/org-roam-vector-search.el
+git add mcp/pyproject.toml packages/org-roam-ai/*.el
 git commit -m "Release ${TAG}"
 echo "   ✓ Changes committed"
 
@@ -79,7 +70,7 @@ echo "   ✓ Tag ${TAG} created"
 
 echo ""
 echo "=========================================="
-echo "Release ${TAG} prepared!"
+echo "MCP Server release ${TAG} prepared!"
 echo "=========================================="
 echo ""
 echo "Next steps:"
@@ -88,16 +79,19 @@ echo "1. Push changes and tag:"
 echo "   git push origin main"
 echo "   git push origin ${TAG}"
 echo ""
-echo "2. Create Gitea release:"
-echo "   - Go to: https://gitea-backend.cruver.network/dcruver/org-roam-ai/releases/new"
-echo "   - Tag: ${TAG}"
-echo "   - Upload: release/embabel-note-gardener-${VERSION}.jar"
+echo "2. Emacs packages:"
+echo "   - Available directly from monorepo via straight.el :files parameter"
+echo "   - No separate publishing needed"
 echo ""
-echo "3. Publish MCP to Gitea PyPI:"
+echo "3. Publish MCP to GitHub Packages:"
 echo "   ./scripts/publish-mcp.sh"
+echo ""
+echo "4. Create GitHub release:"
+echo "   - Go to: https://github.com/dcruver/org-roam-ai/releases/new"
+echo "   - Tag: ${TAG}"
 echo ""
 echo "Release artifacts:"
 echo "  - MCP: mcp/dist/org_roam_mcp-${VERSION}.tar.gz"
 echo "  - MCP: mcp/dist/org_roam_mcp-${VERSION}-py3-none-any.whl"
-echo "  - Agent: release/embabel-note-gardener-${VERSION}.jar"
+echo "  - Emacs packages: Available directly from monorepo"
 echo ""

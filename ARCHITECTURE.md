@@ -19,7 +19,7 @@ Each layer can function independently, but together they provide a comprehensive
 ### Layer 1: Emacs Package (org-roam-semantic)
 
 **Technology**: Emacs Lisp
-**Location**: `emacs/`
+**Location**: `packages/org-roam-ai/`
 **Purpose**: Interactive semantic search and AI assistance within Emacs
 
 #### Core Components
@@ -474,7 +474,7 @@ Agent scheduled audit
 
 ### Adding New MCP Tools
 
-1. Define elisp function in `emacs/org-roam-api.el`
+1. Define elisp function in `packages/org-roam-ai/org-roam-api.el`
 2. Add tool definition in `mcp/src/org_roam_mcp/server.py`
 3. Implement handler in `mcp/src/org_roam_mcp/tools/`
 4. Update MCP README with tool documentation

@@ -1,10 +1,17 @@
 ;;; org-roam-api.el --- Complete API for org-roam knowledge management -*- lexical-binding: t; -*-
 
+;; Author: David Cruver <dcruver@users.noreply.github.com>
+;; URL: https://github.com/dcruver/org-roam-ai
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "27.1") (org-roam "2.2"))
+
 ;;; Commentary:
 ;; Complete API for org-roam integration including:
 ;; - Basic note creation and search
 ;; - Enhanced contextual search for RAG
 ;; - Simplified draft management (one draft per room)
+;;
+;; This package provides the API functions used by org-roam-mcp.
 
 ;;; Code:
 
