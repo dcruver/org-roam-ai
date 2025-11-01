@@ -23,18 +23,13 @@ GITEA_TOKEN=your_token \
 
 The installation script sets up the integrated stack:
 
-1. **Ollama** - Local LLM backend
-    - Service: `ollama.service`
-    - Models: `nomic-embed-text:latest`, `llama3.1:8b`
-    - Port: 11434
-
-2. **MCP Server** (Python)
+1. **MCP Server** (Python)
     - Service: `org-roam-mcp.service`
     - Port: 8000
     - Virtual env: `/opt/org-roam-ai/mcp/.venv`
     - Automatically loads integrated Emacs packages
 
-3. **Integrated Emacs Packages** (loaded automatically)
+2. **Integrated Emacs Packages** (loaded automatically)
     - org-roam-vector-search (semantic search)
     - org-roam-ai-assistant (AI enhancements)
     - org-roam-api (MCP integration)
@@ -45,6 +40,27 @@ The installation script sets up the integrated stack:
 - **User**: Non-root user with sudo privileges
 - **RAM**: 8GB+ recommended (for LLMs)
 - **Disk**: 10GB+ free space (for models)
+
+### Ollama Installation
+
+Install Ollama and required models:
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama service
+sudo systemctl enable ollama
+sudo systemctl start ollama
+
+# Pull required models (may take several minutes)
+ollama pull nomic-embed-text:latest
+ollama pull llama3.1:8b
+
+# Verify installation
+ollama list
+curl http://localhost:11434/api/tags
+```
 
 ## Manual Configuration Required
 
