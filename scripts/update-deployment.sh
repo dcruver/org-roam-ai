@@ -1,6 +1,6 @@
 #!/bin/bash
 # Update an existing org-roam-ai deployment
-# This script updates MCP and Agent to the latest versions
+# This script updates MCP server to the latest version
 
 set -e
 
@@ -10,7 +10,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-INSTALL_DIR="/opt/org-roam-agent"
+INSTALL_DIR="/opt/org-roam-ai"
 VERSION="${1:-latest}"
 
 echo -e "${GREEN}========================================${NC}"
@@ -44,52 +44,13 @@ update_mcp() {
     echo -e "${GREEN}✓ MCP server updated${NC}"
 }
 
-# Update Agent
-update_agent() {
-    echo -e "${YELLOW}Updating Agent...${NC}"
 
-    # Stop service if running
-    if systemctl is-active --quiet org-roam-agent.service; then
-        echo "  Stopping org-roam-agent service..."
-        sudo systemctl stop org-roam-agent.service
-    fi
-
-    # Backup current JAR
-    if [ -f "${INSTALL_DIR}/embabel-note-gardener.jar" ]; then
-        echo "  Backing up current JAR..."
-        sudo cp "${INSTALL_DIR}/embabel-note-gardener.jar" \
-                "${INSTALL_DIR}/embabel-note-gardener.jar.backup"
-    fi
-
-    # Download new version
-    if [ "$VERSION" = "latest" ]; then
-        # Get latest release
-        echo "  Fetching latest release..."
-        LATEST_URL=$(curl -s https://gitea-backend.cruver.network/api/v1/repos/dcruver/org-roam-ai/releases | \
-                     jq -r '.[0].assets[] | select(.name | endswith(".jar")) | .browser_download_url')
-
-        if [ -z "$LATEST_URL" ]; then
-            echo -e "${RED}✗ Could not find latest release${NC}"
-            exit 1
-        fi
-
-        sudo wget "$LATEST_URL" -O "${INSTALL_DIR}/embabel-note-gardener.jar"
-    else
-        RELEASE_URL="https://gitea-backend.cruver.network/dcruver/org-roam-ai/releases/download/v${VERSION}/embabel-note-gardener-${VERSION}.jar"
-        sudo wget "$RELEASE_URL" -O "${INSTALL_DIR}/embabel-note-gardener.jar"
-    fi
-
-    echo -e "${GREEN}✓ Agent updated${NC}"
-}
 
 # Restart services
 restart_services() {
     echo -e "${YELLOW}Restarting services...${NC}"
 
     sudo systemctl start org-roam-mcp.service
-    sleep 2  # Give MCP time to start
-
-    sudo systemctl start org-roam-agent.service
 
     echo -e "${GREEN}✓ Services restarted${NC}"
 }
@@ -105,20 +66,11 @@ check_status() {
         echo -e "${RED}✗ MCP server not running${NC}"
         echo "  Check logs: sudo journalctl -u org-roam-mcp.service -n 50"
     fi
-
-    if systemctl is-active --quiet org-roam-agent.service; then
-        echo -e "${GREEN}✓ Agent running${NC}"
-    else
-        echo -e "${RED}✗ Agent not running${NC}"
-        echo "  Check logs: sudo journalctl -u org-roam-agent.service -n 50"
-    fi
 }
 
 # Main update
 main() {
     update_mcp
-    echo ""
-    update_agent
     echo ""
     restart_services
     check_status
@@ -130,7 +82,6 @@ main() {
     echo ""
     echo "View logs:"
     echo "  sudo journalctl -u org-roam-mcp.service -f"
-    echo "  sudo journalctl -u org-roam-agent.service -f"
     echo ""
 }
 

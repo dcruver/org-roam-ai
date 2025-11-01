@@ -190,83 +190,13 @@ mcp/.pytype/
 mcp/cython_debug/
 
 # ===========================
-# Java/Maven (agent/)
+# Emacs (emacs/)
 # ===========================
 
-# Compiled class files
-agent/**/*.class
-
-# Log files
-agent/**/*.log
-agent/**/*.log.*
-
-# BlueJ files
-agent/**/*.ctxt
-
-# Mobile Tools for Java (J2ME)
-agent/**/.mtj.tmp/
-
-# Package Files
-agent/**/*.jar
-agent/**/*.war
-agent/**/*.nar
-agent/**/*.ear
-agent/**/*.zip
-agent/**/*.tar.gz
-agent/**/*.rar
-
-# Virtual machine crash logs
-agent/**/hs_err_pid*
-agent/**/replay_pid*
-
-# Maven
-agent/target/
-agent/pom.xml.tag
-agent/pom.xml.releaseBackup
-agent/pom.xml.versionsBackup
-agent/pom.xml.next
-agent/release.properties
-agent/dependency-reduced-pom.xml
-agent/buildNumber.properties
-agent/.mvn/timing.properties
-agent/.mvn/wrapper/maven-wrapper.jar
-
-# Eclipse
-agent/.settings/
-agent/.classpath
-agent/.project
-agent/.factorypath
-
-# IntelliJ IDEA
-agent/.idea/
-agent/**/*.iml
-agent/**/*.iws
-
-# NetBeans
-agent/nbproject/private/
-agent/nbbuild/
-agent/dist/
-agent/nbdist/
-agent/.nb-gradle/
-
-# VS Code
-agent/.vscode/
-
-# Spring Boot
-agent/spring-shell.log
-
-# Database files (SQLite)
-agent/**/*.db
-agent/**/*.db-shm
-agent/**/*.db-wal
-
-# Gardener-specific
-agent/.gardener/
-agent/embabel-note-gardener.log
-
-# Test output
-agent/test-output/
-agent/**/*.tmp
+# Compiled Emacs Lisp files
+emacs/**/*.elc
+emacs/**/auto-save-list
+emacs/**/*.tmp
 
 # ===========================
 # Project-specific
