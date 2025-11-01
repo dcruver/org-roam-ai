@@ -152,7 +152,8 @@ Returns semantically similar notes with full content for RAG applications."
                   (mapcar (lambda (result)
                             (let* ((file (car result))
                                    (similarity (cadr result))
-                                   (node (org-roam-node-from-file file))
+                                   (node (let ((id (caar (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] file))))
+                                          (when id (org-roam-node-from-id id))))
                                    (full-content (when file
                                                   (condition-case nil
                                                       (with-temp-buffer

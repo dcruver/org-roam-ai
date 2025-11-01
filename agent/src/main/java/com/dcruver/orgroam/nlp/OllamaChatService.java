@@ -110,28 +110,28 @@ public class OllamaChatService {
         String systemMessage = """
             You are an expert at Org-mode formatting. Your task is to ensure notes follow proper Org-mode conventions.
 
-            Required format:
-            1. :PROPERTIES: drawer at the top with at minimum :ID: and :CREATED: properties
-            2. A single level-1 heading (* Title) after the properties drawer
-            3. Body content after the heading
-            4. File must end with a single newline
+            CRITICAL REQUIREMENTS (ALL must be present):
+            1. :PROPERTIES: drawer at the very top
+            2. :ID: property inside :PROPERTIES:
+            3. :CREATED: property inside :PROPERTIES: (format: [YYYY-MM-DD DDD HH:MM] where DDD is 3-letter day like Mon, Tue)
+            4. A single level-1 heading (* Title) after the :END: line
+            5. Body content after the heading
+            6. File must end with a single newline
 
-            Rules:
-            - Preserve all existing content - only fix formatting
-            - If :PROPERTIES: drawer is missing, add it at the top
-            - If :ID: is missing, add it with the provided ID
-            - If :CREATED: is missing, add it with current timestamp
+            STRICT Rules:
+            - **ALWAYS add :CREATED: if missing** - use current date/time in format [2025-10-28 Mon 19:00]
+            - **ALWAYS add :ID: if missing** - use the provided noteId value
             - **If title (level-1 heading) is missing, ALWAYS generate and add one:**
               * Analyze the note content to understand the main topic/concept
               * Create a concise, descriptive title (3-8 words) that captures the essence
               * Use title case for the heading
               * Examples: "Docker Container Networking", "Personal AI Infrastructure", "Linux Hotkeys Reference"
-              * Place it after the :PROPERTIES: drawer as "* Your Generated Title"
+              * Place it after the :END: line as "* Your Generated Title"
             - Preserve existing properties, links, and body content exactly
-            - Ensure proper spacing between sections
+            - Ensure proper spacing: blank line between :END: and #+title, blank line after title
+            - If ANY of the critical requirements are missing, you MUST add them
 
             Return ONLY the corrected Org-mode content, with no explanations.
-            If the content is already properly formatted, return it unchanged.
             """;
 
         String userMessage = String.format(

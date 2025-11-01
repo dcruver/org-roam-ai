@@ -234,11 +234,11 @@ async def list_tools() -> ListToolsResult:
 
 
 @app.call_tool()
-async def call_tool(request: CallToolRequest) -> CallToolResult:
+async def call_tool(name: str, arguments: dict) -> CallToolResult:
     """Handle tool calls."""
     try:
-        tool_name = request.name
-        arguments = request.arguments or {}
+        tool_name = name
+        arguments = arguments or {}
         
         logger.info(f"Calling tool: {tool_name} with arguments: {arguments}")
         
@@ -413,7 +413,7 @@ async def call_tool(request: CallToolRequest) -> CallToolResult:
             )
             
     except EmacsClientError as e:
-        logger.error(f"Emacs client error in {request.name}: {e}")
+        logger.error(f"Emacs client error in {tool_name}: {e}")
         return CallToolResult(
             content=[
                 TextContent(
@@ -423,7 +423,7 @@ async def call_tool(request: CallToolRequest) -> CallToolResult:
             ]
         )
     except Exception as e:
-        logger.error(f"Unexpected error in {request.name}: {e}")
+        logger.error(f"Unexpected error in {tool_name}: {e}")
         return CallToolResult(
             content=[
                 TextContent(
@@ -438,40 +438,48 @@ def _format_contextual_search_results(result: Dict[str, Any]) -> str:
     """Format contextual search results for display."""
     if not result.get("success"):
         return f"Search failed: {result.get('error', 'Unknown error')}"
-    
+
     notes = result.get("notes", [])
     context = result.get("knowledge_context", {})
-    
+
     if not notes:
         return "No relevant notes found."
-    
+
     response = f"Found {len(notes)} relevant notes:\n\n"
-    
+
     for i, note in enumerate(notes, 1):
         response += f"{i}. **{note.get('title', 'Untitled')}**\n"
         response += f"   Relevance: {note.get('relevance_score', 0):.3f}\n"
-        
-        # Show snippet of content
+
+        # Show snippet of content - escape all control characters
         content = note.get('full_content', '')
         if content:
-            # Clean content and show first 200 chars
+            # Remove properties and clean content
             clean_content = content.replace(':PROPERTIES:', '').replace(':END:', '')
-            clean_content = ' '.join(clean_content.split()[:30])  # First 30 words
+            # Split into words and take first 30
+            clean_content = ' '.join(clean_content.split()[:30])
+            # Escape any remaining control characters for JSON safety
+            clean_content = (clean_content
+                           .replace('\n', ' ')
+                           .replace('\r', ' ')
+                           .replace('\t', ' ')
+                           .replace('\x0b', ' ')
+                            .replace('\x0c', ' '))
             response += f"   Content: {clean_content}...\n"
-        
+
         # Show connections
-        backlinks = note.get('backlinks', [])
-        forward_links = note.get('forward_links', [])
+        backlinks = note.get('backlinks') or []
+        forward_links = note.get('forward_links') or []
         if backlinks or forward_links:
             response += f"   Connections: {len(backlinks)} backlinks, {len(forward_links)} forward links\n"
-        
+
         response += "\n"
-    
+
     # Add knowledge context summary
     total_connections = context.get('total_connections', 0)
     if total_connections > 0:
         response += f"Knowledge graph summary: {total_connections} total connections found\n"
-    
+
     return response
 
 
@@ -498,17 +506,25 @@ def _format_semantic_search_results(result: Dict[str, Any]) -> str:
         response += f"{i}. **{note.get('title', 'Untitled')}**\n"
         response += f"   Similarity: {note.get('similarity_score', 0):.3f}\n"
 
-        # Show snippet of content
+        # Show snippet of content - escape all control characters
         content = note.get('full_content', '')
         if content:
-            # Clean content and show first 30 words
+            # Remove properties and clean content
             clean_content = content.replace(':PROPERTIES:', '').replace(':END:', '')
+            # Split into words and take first 30
             clean_content = ' '.join(clean_content.split()[:30])
+            # Escape any remaining control characters for JSON safety
+            clean_content = (clean_content
+                           .replace('\n', ' ')
+                           .replace('\r', ' ')
+                           .replace('\t', ' ')
+                           .replace('\x0b', ' ')
+                           .replace('\x0c', ' '))
             response += f"   Content: {clean_content}...\n"
 
         # Show connections
-        backlinks = note.get('backlinks', [])
-        forward_links = note.get('forward_links', [])
+        backlinks = note.get('backlinks') or []
+        forward_links = note.get('forward_links') or []
         if backlinks or forward_links:
             response += f"   Connections: {len(backlinks)} backlinks, {len(forward_links)} forward links\n"
 
@@ -777,39 +793,90 @@ def create_starlette_app():
                 
                 if tool_name == "search_notes":
                     result = emacs_client.search_notes(arguments.get("query"))
-                    return JSONResponse({
+
+                    # Format result like MCP tools do
+                    formatted_text = f"Search results for '{arguments.get('query')}':\n\n" + _format_basic_search_results(result)
+
+                    response_data = {
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),
                         "result": {
-                            "content": [{"type": "text", "text": str(result)}]
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
                         }
-                    })
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 elif tool_name == "contextual_search":
                     result = emacs_client.contextual_search(
                         arguments.get("query"),
                         arguments.get("limit", 10)
                     )
-                    return JSONResponse({
+
+                    # Debug: log the result
+                    logger.info(f"Contextual search result type: {type(result)}")
+                    logger.info(f"Contextual search result: {result}")
+
+                    # Format result like MCP tools do
+                    formatted_text = f"Contextual search results for '{arguments.get('query')}':\n\n" + _format_contextual_search_results(result)
+
+                    response_data = {
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),
                         "result": {
-                            "content": [{"type": "text", "text": str(result)}]
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
                         }
-                    })
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 elif tool_name == "semantic_search":
                     result = emacs_client.semantic_search(
                         arguments.get("query"),
                         arguments.get("limit", 10),
                         arguments.get("cutoff", 0.55)
                     )
-                    # Parse the JSON string result and return as object for HTTP JSON-RPC
-                    import json as json_lib
-                    parsed_result = json_lib.loads(result) if isinstance(result, str) else result
-                    return JSONResponse({
+
+                    # Format result like MCP tools do
+                    formatted_text = f"Semantic search results for '{arguments.get('query')}':\n\n" + _format_semantic_search_results(result)
+
+                    response_data = {
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),
-                        "result": parsed_result
-                    })
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
+                        }
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 elif tool_name == "create_note":
                     title = arguments.get("title")
                     content = arguments.get("content")
@@ -873,13 +940,20 @@ def create_starlette_app():
                     result = emacs_client.get_daily_content(
                         arguments.get("date")
                     )
-                    return JSONResponse({
+
+                    # Result is a dict - ensure proper JSON encoding
+                    response_data = {
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),
-                        "result": {
-                            "content": [{"type": "text", "text": str(result)}]
-                        }
-                    })
+                        "result": result
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 elif tool_name == "generate_embeddings":
                     force = arguments.get("force", False)
                     result = emacs_client.generate_embeddings(force)
@@ -926,7 +1000,12 @@ def create_starlette_app():
                         }
                     }
                 })
-            
+
+            # Handle initialized notification (required by MCP spec)
+            elif rpc_request.get("method") == "notifications/initialized":
+                # Notifications don't require a response body, but should return 200
+                return Response(content="", status_code=200, media_type="application/json")
+
             else:
                 return JSONResponse({
                     "jsonrpc": "2.0",
@@ -968,22 +1047,41 @@ def create_starlette_app():
 
 async def main():
     """Main async entry point for the MCP server."""
-    import uvicorn
-    logger.info("Starting org-roam MCP HTTP server on port 8000...")
-    logger.info("Available endpoints:")
-    logger.info("  GET  / - Health check")
-    logger.info("  POST / - MCP JSON-RPC endpoint for n8n")
+    import sys
 
-    starlette_app = create_starlette_app()
+    # Check if --stdio flag is provided
+    if "--stdio" in sys.argv:
+        # Run in stdio mode for MCP clients like Codex
+        from mcp.server.stdio import stdio_server
+        logger.info("Starting org-roam MCP server in stdio mode...")
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="org-roam-mcp",
+                    server_version="0.1.7",
+                    capabilities=ServerCapabilities()
+                )
+            )
+    else:
+        # Run in HTTP mode for n8n and other HTTP clients
+        import uvicorn
+        logger.info("Starting org-roam MCP HTTP server on port 8000...")
+        logger.info("Available endpoints:")
+        logger.info("  GET  / - Health check")
+        logger.info("  POST / - MCP JSON-RPC endpoint for n8n")
 
-    config = uvicorn.Config(
-        starlette_app,
-        host="0.0.0.0",
-        port=8000,
-        log_level="info"
-    )
-    server = uvicorn.Server(config)
-    await server.serve()
+        starlette_app = create_starlette_app()
+
+        config = uvicorn.Config(
+            starlette_app,
+            host="0.0.0.0",
+            port=8000,
+            log_level="info"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
 
 
 def cli_main():
