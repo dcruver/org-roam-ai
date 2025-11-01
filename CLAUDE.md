@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 org-roam-ai is a **monorepo** containing integrated components for AI-powered org-roam knowledge base management:
 
 1. **mcp/** - Python MCP server providing API access to org-roam via HTTP/stdio
-2. **emacs/** - Integrated Emacs packages providing semantic search and AI assistance
+2. **packages/org-roam-ai/** - Emacs packages for straight.el and MCP server
 
 **Integrated Components**: All Emacs packages (org-roam-vector-search, org-roam-ai-assistant, org-roam-api) are included in the monorepo and loaded automatically by the MCP server.
 
@@ -15,7 +15,7 @@ org-roam-ai is a **monorepo** containing integrated components for AI-powered or
 
 **Component-Specific Guides** (detailed implementation):
 - **[mcp/CLAUDE.md](mcp/CLAUDE.md)** - MCP server development, tool implementations, Emacs integration
-- **[emacs/](emacs/)** - Integrated Emacs packages (org-roam-vector-search, org-roam-ai-assistant, org-roam-api)
+- **[packages/org-roam-ai/](packages/org-roam-ai/)** - Emacs packages for straight.el and MCP server
 
 **Architecture & Development**:
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into system design, data flow, integration patterns
@@ -145,7 +145,7 @@ org-roam-ai/
 │   ├── tests/            → Pytest test suite
 │   └── pyproject.toml    → Package configuration
 │
-└── emacs/                 Integrated Emacs packages
+└── packages/org-roam-ai/    Emacs packages (straight.el + MCP compatible)
     ├── org-roam-api.el          → API functions for MCP
     ├── org-roam-vector-search.el → Semantic search engine
     └── org-roam-ai-assistant.el  → AI enhancement tools
@@ -161,7 +161,7 @@ The integrated two-tier architecture provides semantic search and API access:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Integrated Emacs Packages (emacs/)                             │
+│  Emacs Packages (packages/org-roam-ai/)                        │
 │  - org-roam-vector-search: Vector embeddings & semantic search  │
 │  - org-roam-ai-assistant: AI enhancement & analysis             │
 │  - org-roam-api: MCP integration functions                      │
@@ -211,7 +211,7 @@ Agent.audit() → CorpusScanner → finds orphan notes
 **When**: Need new org-roam functionality accessible via API
 
 **Steps**:
-1. **Add elisp function** in `emacs/` directory
+1. **Add elisp function** in `packages/org-roam-ai/` directory
    - Add to appropriate file: `org-roam-api.el`, `org-roam-vector-search.el`, or `org-roam-ai-assistant.el`
    - Must return JSON string
    - Follow existing patterns for function naming and error handling
@@ -237,7 +237,7 @@ Agent.audit() → CorpusScanner → finds orphan notes
 **When**: Need new AI-powered enhancement capabilities
 
 **Steps**:
-1. **Add elisp function** in `emacs/org-roam-ai-assistant.el`
+1. **Add elisp function** in `packages/org-roam-ai/org-roam-ai-assistant.el`
    - Follow existing patterns for context gathering and AI calls
    - Use `org-roam-ai--get-context-for-note()` for relevant context
    - Implement with `org-roam-ai--call-ai-with-context()`

@@ -158,14 +158,29 @@ Best for: Single Proxmox server deployment with automatic updates
 
 **Setup:**
 
-1. **Emacs Package** (Already Done)
+1. **Emacs Packages** (Install via straight.el)
    ```elisp
-   ;; In your Emacs config
+   ;; In your Emacs config - installs directly from monorepo
    (straight-use-package
-     '(org-roam-semantic :type git
-                         :host github
-                         :repo "yourusername/org-roam-ai"
-                         :files ("emacs/*.el")))
+     '(org-roam-vector-search
+       :type git
+       :host github
+       :repo "dcruver/org-roam-ai"
+       :files ("packages/org-roam-ai/org-roam-vector-search.el")))
+
+   (straight-use-package
+     '(org-roam-ai-assistant
+       :type git
+       :host github
+       :repo "dcruver/org-roam-ai"
+       :files ("packages/org-roam-ai/org-roam-ai-assistant.el")))
+
+   (straight-use-package
+     '(org-roam-api
+       :type git
+       :host github
+       :repo "dcruver/org-roam-ai"
+       :files ("packages/org-roam-ai/org-roam-api.el")))
    ```
 
 2. **MCP Server via Git**

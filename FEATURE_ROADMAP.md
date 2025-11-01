@@ -179,7 +179,7 @@ async def advanced_search(query: str, filters: Dict[str, Any]) -> List[Dict[str,
 
 ### Emacs Package Extensions
 
-**New Functions in emacs/:**
+**New Functions in packages/org-roam-ai/:**
 - `org-roam-ai-graph-analysis.el` - Graph health and analytics
 - `org-roam-ai-link-suggestions.el` - Intelligent linking
 - `org-roam-ai-content-quality.el` - Quality assessment

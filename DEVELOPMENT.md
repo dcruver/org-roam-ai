@@ -240,7 +240,7 @@ ORG_ROAM_PATH=./samples/notes ./mvnw spring-boot:run
 
 **Steps**:
 
-1. **Add Elisp function** (`emacs/org-roam-api.el` - create if needed):
+1. **Add Elisp function** (`packages/org-roam-ai/org-roam-api.el`):
    ```elisp
    (defun my/api-search-by-tag (tag)
      "Search notes by tag, return JSON."

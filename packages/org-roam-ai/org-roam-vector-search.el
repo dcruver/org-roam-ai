@@ -1,6 +1,10 @@
 ;;; org-roam-vector-search.el --- Vector embeddings and AI assistance for org-roam -*- lexical-binding: t; -*-
-;;; Version: 1.3.0
-;;;
+
+;; Author: David Cruver <dcruver@users.noreply.github.com>
+;; URL: https://github.com/dcruver/org-roam-ai
+;; Version: 1.3.0
+;; Package-Requires: ((emacs "27.1") (org-roam "2.2"))
+
 ;;; Commentary:
 ;; This package adds vector embedding support and direct AI integration to org-roam.
 ;; It stores embeddings as org properties and provides semantic similarity search.

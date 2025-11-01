@@ -18,7 +18,7 @@ org-roam-ai provides AI-powered semantic search and API services for [org-roam](
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Integrated Emacs Packages (emacs/)                             │
+│  Emacs Packages (packages/org-roam-ai/)                        │
 │  - org-roam-vector-search: Semantic search & embeddings         │
 │  - org-roam-ai-assistant: AI enhancement & analysis             │
 │  - org-roam-api: MCP integration functions                      │
@@ -37,7 +37,7 @@ org-roam-ai provides AI-powered semantic search and API services for [org-roam](
 
 ### Component Overview
 
-**[emacs/](emacs/) - Integrated Emacs Packages**
+**[packages/org-roam-ai/](packages/org-roam-ai/) - Emacs Packages**
 - `org-roam-vector-search.el`: Semantic search and vector embeddings
 - `org-roam-ai-assistant.el`: AI-powered note enhancement and analysis
 - `org-roam-api.el`: MCP integration functions
@@ -72,7 +72,50 @@ org-roam-ai provides AI-powered semantic search and API services for [org-roam](
 
 ### Installation
 
-#### 1. MCP Server (API Access & n8n Integration)
+#### 1. Emacs Packages (Core Functionality)
+```elisp
+;; Install via straight.el (recommended)
+;; Installs directly from monorepo - only the package files, not the entire repo
+(straight-use-package
+  '(org-roam-vector-search
+    :type git
+    :host github
+    :repo "dcruver/org-roam-ai"
+    :files ("packages/org-roam-ai/org-roam-vector-search.el")))
+
+(straight-use-package
+  '(org-roam-ai-assistant
+    :type git
+    :host github
+    :repo "dcruver/org-roam-ai"
+    :files ("packages/org-roam-ai/org-roam-ai-assistant.el")))
+
+(straight-use-package
+  '(org-roam-api
+    :type git
+    :host github
+    :repo "dcruver/org-roam-ai"
+    :files ("packages/org-roam-ai/org-roam-api.el")))
+```
+
+**Key Bindings:**
+- `C-c v s` - Semantic search by concept
+- `C-c a f` - AI-enhanced note fleshing
+- `C-c a e` - Explain concepts at point
+
+#### 2. MCP Server (API Access & n8n Integration)
+
+**Option A: One-command standalone installation (Recommended)**
+```bash
+# Install everything automatically (virtual env, service, Emacs config)
+# Installs from GitHub Packages, requires straight.el prerequisite
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mcp-standalone.sh | bash
+
+# Service starts automatically
+sudo systemctl status org-roam-mcp
+```
+
+**Option B: Manual installation**
 ```bash
 # Install MCP server
 cd mcp
@@ -92,24 +135,8 @@ curl -X POST http://localhost:8000 -H "Content-Type: application/json" -d '{
   "id": 1
 }'
 ```
+**→ See [STANDALONE_INSTALL.md](STANDALONE_INSTALL.md) for one-command setup**  
 **→ See [mcp/README.md](mcp/README.md) for API reference**
-
-#### 2. Maintenance Agent (Automated Corpus Health)
-```bash
-# Build agent
-cd agent
-./mvnw clean package
-
-# Run interactive shell
-java -jar target/embabel-note-gardener-*.jar
-
-# Check corpus health
-starwars> status
-
-# Generate maintenance plan
-starwars> audit
-```
-**→ See [agent/README.md](agent/README.md) for full guide**
 
 ## Use Cases
 
@@ -168,14 +195,14 @@ starwars> audit
 ## Requirements
 
 ### Prerequisites (All Components)
-- **org-roam-semantic** installed via straight.el
+- **org-roam-ai** packages installed via straight.el
 - Emacs 27+ with org-roam
 - Emacs server running
 - Ollama with nomic-embed-text, llama3.1:8b
 
 ### MCP Server
 - Python 3.8+
-- org-roam-semantic loaded in Emacs
+- org-roam-ai packages loaded in Emacs
 
 ### Agent
 - Java 21+

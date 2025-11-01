@@ -51,48 +51,48 @@ class EmacsClient:
         self._load_emacs_packages()
 
     def _load_emacs_packages(self) -> None:
-        """Load required elisp packages from local emacs/ directory."""
+        """Verify that required elisp packages are loaded in Emacs."""
         try:
-            # Get path to emacs directory relative to this file
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            emacs_dir = os.path.join(current_dir, '..', '..', '..', 'emacs')
+            logger.info("Verifying Emacs packages are loaded...")
 
-            logger.info(f"Loading Emacs packages from: {emacs_dir}")
-
-            # Load packages in dependency order
-            packages = [
-                'org-roam-vector-search.el',
-                'org-roam-ai-assistant.el',
-                'org-roam-api.el'
+            # Check if packages are loaded
+            packages_to_check = [
+                'org-roam-vector-search',
+                'org-roam-ai-assistant',
+                'org-roam-api'
             ]
 
-            for package in packages:
-                package_path = os.path.join(emacs_dir, package)
-                if os.path.exists(package_path):
-                    logger.info(f"Loading package: {package}")
-                    # Load the elisp file - load-file returns t on success, not JSON
-                    # Use double quotes and escape them properly for shell
-                    load_expr = f'(load-file "{package_path}")'
-                    try:
-                        # Use _execute_command directly since load-file doesn't return JSON
-                        # Use single quotes around the elisp expression to avoid shell interpretation
-                        command = f"emacsclient --server-file={self.server_file} -e '{load_expr}'"
-                        response = self._execute_command(command)
-                        if response.strip() == 't':
-                            logger.info(f"Successfully loaded {package}")
-                        else:
-                            logger.warning(f"Unexpected response loading {package}: {response}")
-                    except EmacsClientError as e:
-                        logger.warning(f"Failed to load {package}: {e}")
-                        # Continue with other packages even if one fails
+            missing_packages = []
+            for package in packages_to_check:
+                if self._is_package_available(package):
+                    logger.info(f"Package {package} is loaded")
                 else:
-                    logger.warning(f"Package file not found: {package_path}")
+                    missing_packages.append(package)
+                    logger.warning(f"Package {package} is not loaded")
 
-            logger.info("Emacs package loading complete")
+            if missing_packages:
+                logger.error(f"Missing packages: {', '.join(missing_packages)}")
+                logger.error("Please ensure the Emacs configuration includes the MCP package setup")
+                logger.error("The install script should have added this automatically")
+                raise RuntimeError(f"Required Emacs packages not loaded: {missing_packages}")
+            else:
+                logger.info("All required Emacs packages are loaded")
 
         except Exception as e:
-            logger.error(f"Error loading Emacs packages: {e}")
-            # Don't fail initialization, just log the error
+            logger.error(f"Failed to verify Emacs packages: {e}")
+            raise  # This is critical - we can't function without the packages
+
+    def _is_package_available(self, package_name: str) -> bool:
+        """Check if a package is loaded in Emacs."""
+        try:
+            # Check if the package feature is loaded
+            check_expr = f'(featurep (quote {package_name}))'
+            command = f"emacsclient --server-file={self.server_file} -e '{check_expr}'"
+            response = self._execute_command(command)
+            return response.strip() == 't'
+        except Exception as e:
+            logger.error(f"Failed to check package {package_name}: {e}")
+            return False
 
     def _escape_for_elisp(self, value: str) -> str:
         """Escape string for safe elisp evaluation.
