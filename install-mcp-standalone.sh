@@ -171,6 +171,48 @@ setup_emacs_config() {
   (org-roam-db-autosync-mode))
 EOF
 
+    # Add Ollama URL configuration if environment variable is set
+    if [ -n "$OLLAMA_URL" ]; then
+        echo -e "${YELLOW}Configuring Ollama URL: $OLLAMA_URL${NC}"
+        cat >> "$CONFIG_FILE" << EOF
+
+;; Configure Ollama URL
+(customize-set-variable 'org-roam-semantic-ollama-url "$OLLAMA_URL")
+EOF
+    fi
+
+    # Add embedding model configuration if environment variable is set
+    if [ -n "$OLLAMA_EMBEDDING_MODEL" ]; then
+        echo -e "${YELLOW}Configuring embedding model: $OLLAMA_EMBEDDING_MODEL${NC}"
+        cat >> "$CONFIG_FILE" << EOF
+(customize-set-variable 'org-roam-semantic-embedding-model "$OLLAMA_EMBEDDING_MODEL")
+EOF
+    fi
+
+    # Add generation model configuration if environment variable is set
+    if [ -n "$OLLAMA_GENERATION_MODEL" ]; then
+        echo -e "${YELLOW}Configuring generation model: $OLLAMA_GENERATION_MODEL${NC}"
+        cat >> "$CONFIG_FILE" << EOF
+(customize-set-variable 'org-roam-semantic-generation-model "$OLLAMA_GENERATION_MODEL")
+EOF
+    fi
+
+    # Add chunking configuration if environment variable is set
+    if [ -n "$ENABLE_CHUNKING" ]; then
+        echo -e "${YELLOW}Configuring chunking: $ENABLE_CHUNKING${NC}"
+        cat >> "$CONFIG_FILE" << EOF
+(customize-set-variable 'org-roam-semantic-enable-chunking t)
+EOF
+    fi
+
+    # Add minimum chunk size configuration if environment variable is set
+    if [ -n "$MIN_CHUNK_SIZE" ]; then
+        echo -e "${YELLOW}Configuring minimum chunk size: $MIN_CHUNK_SIZE${NC}"
+        cat >> "$CONFIG_FILE" << EOF
+(customize-set-variable 'org-roam-semantic-min-chunk-size $MIN_CHUNK_SIZE)
+EOF
+    fi
+
     # Check if init.el already loads this file
     if ! grep -q "init-org-roam-mcp.el" "$HOME/.emacs.d/init.el" 2>/dev/null; then
         echo -e "${YELLOW}Adding MCP config to init.el...${NC}"

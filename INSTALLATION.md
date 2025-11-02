@@ -16,6 +16,11 @@ cd org-roam-ai
 INSTALL_DIR=/opt/org-roam-ai \
 ORG_ROAM_PATH=$HOME/org-roam \
 GITEA_TOKEN=your_token \
+OLLAMA_URL=http://your-ollama-server:11434 \
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text \
+OLLAMA_GENERATION_MODEL=llama3.1:8b \
+ENABLE_CHUNKING=true \
+MIN_CHUNK_SIZE=50 \
 ./scripts/install-server.sh
 ```
 
@@ -33,6 +38,35 @@ The installation script sets up the integrated stack:
     - org-roam-vector-search (semantic search)
     - org-roam-ai-assistant (AI enhancements)
     - org-roam-api (MCP integration)
+
+## Configuration Options
+
+### Environment Variables
+
+The installation script supports the following environment variables for customization:
+
+**Installation Settings:**
+- `INSTALL_DIR`: Installation directory (default: `/opt/org-roam-ai`)
+- `ORG_ROAM_PATH`: Path to org-roam notes (default: `$HOME/org-roam`)
+- `GITEA_TOKEN`: Git authentication token (optional)
+
+**Ollama/Semantic Search Configuration:**
+- `OLLAMA_URL`: Ollama server URL (default: `http://localhost:11434`)
+- `OLLAMA_EMBEDDING_MODEL`: Model for text embeddings (default: `nomic-embed-text`)
+- `OLLAMA_GENERATION_MODEL`: Model for text generation (default: `llama3.1:8b`)
+- `ENABLE_CHUNKING`: Enable text chunking for better embeddings (default: `false`)
+- `MIN_CHUNK_SIZE`: Minimum chunk size for text splitting (default: `100`)
+
+**Example with all options:**
+```bash
+INSTALL_DIR=/opt/org-roam-ai \
+ORG_ROAM_PATH=$HOME/org-roam \
+OLLAMA_URL=http://your-server:11434 \
+OLLAMA_GENERATION_MODEL=gpt-oss:20b \
+ENABLE_CHUNKING=true \
+MIN_CHUNK_SIZE=50 \
+./scripts/install-server.sh
+```
 
 ## Prerequisites
 
@@ -78,15 +112,7 @@ The script doesn't configure Emacs automatically. You need to:
   (org-roam-db-autosync-mode))
 ```
 
-**Configure Ollama (optional - for AI features):**
-```elisp
-;; Configure Ollama connection (if using AI features)
-(customize-set-variable 'org-roam-semantic-ollama-url "http://localhost:11434")
-(customize-set-variable 'org-roam-semantic-embedding-model "nomic-embed-text")
-(customize-set-variable 'org-roam-semantic-generation-model "llama3.1:8b")
-```
-
-**Note:** The MCP server automatically loads the integrated Emacs packages. No manual loading required.
+**Note:** The installation script automatically configures Ollama settings and loads the integrated Emacs packages. Manual configuration is only needed if you want to override the defaults set during installation.
 
 **Start Emacs server:**
 ```bash

@@ -8,6 +8,16 @@ This script provides a **one-command installation** for the org-roam-ai MCP serv
 curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mcp-standalone.sh | bash
 ```
 
+**With custom configuration:**
+```bash
+OLLAMA_URL="http://your-ollama-server:11434" \
+OLLAMA_EMBEDDING_MODEL="nomic-embed-text" \
+OLLAMA_GENERATION_MODEL="llama3.1:8b" \
+ENABLE_CHUNKING="true" \
+MIN_CHUNK_SIZE="50" \
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mcp-standalone.sh | bash
+```
+
 **Note**: This installs from GitHub Packages. For public packages, authentication may still be required.
 
 ## What It Does
@@ -16,8 +26,9 @@ curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mc
 2. **Virtual Environment**: Creates `~/.org-roam-mcp/` with isolated Python environment
 3. **MCP Installation**: Installs `org-roam-mcp` from PyPI
 4. **Emacs Configuration**: Sets up straight.el and required org-roam packages
-5. **Systemd Service**: Creates and enables `org-roam-mcp.service`
-6. **Auto-Start**: Service starts automatically on boot
+5. **Semantic Configuration**: Configures Ollama and semantic search settings from environment variables
+6. **Systemd Service**: Creates and enables `org-roam-mcp.service`
+7. **Auto-Start**: Service starts automatically on boot
 
 ## What You Get
 
@@ -54,6 +65,26 @@ Script creates: /etc/systemd/system/org-roam-mcp.service
 Service starts MCP server
 MCP server verifies Emacs packages are loaded
 MCP server provides API on port 8000
+```
+
+## Configuration Options
+
+### Environment Variables
+
+- **`OLLAMA_URL`**: Set custom Ollama server URL (default: `http://localhost:11434`)
+- **`OLLAMA_EMBEDDING_MODEL`**: Set embedding model (default: `nomic-embed-text`)
+- **`OLLAMA_GENERATION_MODEL`**: Set generation model (default: `llama3.1:8b`)
+- **`ENABLE_CHUNKING`**: Enable text chunking for better embeddings (default: `false`)
+- **`MIN_CHUNK_SIZE`**: Minimum chunk size for text splitting (default: `100`)
+
+**Example with all options:**
+```bash
+OLLAMA_URL="http://your-server:11434" \
+OLLAMA_EMBEDDING_MODEL="nomic-embed-text" \
+OLLAMA_GENERATION_MODEL="gpt-oss:20b" \
+ENABLE_CHUNKING="true" \
+MIN_CHUNK_SIZE="50" \
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mcp-standalone.sh | bash
 ```
 
 ## Requirements
