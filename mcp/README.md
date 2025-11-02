@@ -30,16 +30,23 @@ This server wraps existing org-roam elisp functions via `emacsclient`, providing
 
 ### For Users
 
-**Install from Git (Recommended):**
+**One-shot installation (Recommended):**
 
 ```bash
-pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
+# Download and run the installation script
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install.sh | bash
 ```
 
-**Install from GitHub Packages:**
+**Install from PyPI:**
 
 ```bash
-pip install --index-url https://pypi.pkg.github.com/dcruver org-roam-mcp
+pip install org-roam-mcp
+```
+
+**Install from GitHub (Development):**
+
+```bash
+pip install git+https://github.com/dcruver/org-roam-ai.git#subdirectory=mcp
 ```
 
 ### For Developers
