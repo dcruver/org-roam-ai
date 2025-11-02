@@ -105,10 +105,8 @@ install_mcp() {
 
     source "$VENV_DIR/bin/activate"
 
-    # Install from personal GitHub Packages registry
-    pip install --upgrade org-roam-mcp \
-        --index-url https://pypi.pkg.github.com/dcruver \
-        --extra-index-url https://pypi.org/simple
+    # Install from PyPI
+    pip install --upgrade org-roam-mcp
 
     if command -v org-roam-mcp >/dev/null 2>&1; then
         echo -e "${GREEN}✓ MCP server installed successfully${NC}"

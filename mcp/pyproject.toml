@@ -35,9 +35,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://gitea-backend.cruver.network/dcruver/org-roam-ai"
-Repository = "https://gitea-backend.cruver.network/dcruver/org-roam-ai"
-Issues = "https://gitea-backend.cruver.network/dcruver/org-roam-ai/issues"
+Homepage = "https://github.com/dcruver/org-roam-ai"
+Repository = "https://github.com/dcruver/org-roam-ai"
+Issues = "https://github.com/dcruver/org-roam-ai/issues"
 
 [project.optional-dependencies]
 dev = [

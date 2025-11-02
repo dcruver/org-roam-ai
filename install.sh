@@ -72,8 +72,8 @@ install_mcp() {
         pip3 uninstall -y org-roam-mcp
     fi
 
-    # Install from git subdirectory
-    pip3 install --user "git+${GITEA_URL}.git#subdirectory=mcp"
+    # Install from PyPI
+    pip3 install --user --upgrade org-roam-mcp
 
     if command -v org-roam-mcp >/dev/null 2>&1; then
         echo -e "${GREEN}✓ MCP server installed successfully${NC}"

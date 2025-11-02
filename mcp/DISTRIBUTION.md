@@ -54,19 +54,16 @@ git push origin v0.1.x
 
 ## Quick Install (For Users)
 
-### Option 1: Install from Git (Recommended)
+### Option 1: Install from PyPI (Recommended)
 
-Users can install directly from your Gitea repository:
+Users can install directly from PyPI:
 
 ```bash
-# SSH (requires Gitea SSH access)
-pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
+# Install latest version
+pip install org-roam-mcp
 
-# HTTPS (if Gitea HTTPS is configured)
-pip install git+https://gitea-backend.cruver.network/dcruver/org-roam-mcp.git
-
-# Install specific version/tag
-pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git@v0.1.0
+# Install specific version
+pip install org-roam-mcp==0.1.14
 ```
 
 ### Option 2: Install from Wheel
@@ -310,34 +307,29 @@ jobs:
 ### Installing from Different Sources
 
 ```bash
-# From Gitea Git repository (recommended for development)
-pip install git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
-
-# From Gitea package registry
-pip install --index-url http://gitea-backend.cruver.network:3080/api/packages/dcruver/pypi/simple \
-  --trusted-host gitea-backend.cruver.network \
-  org-roam-mcp
-
-# From PyPI (if published)
+# From PyPI (recommended for users)
 pip install org-roam-mcp
+
+# From PyPI with specific version
+pip install org-roam-mcp==0.1.14
+
+# From GitHub repository (for development)
+pip install git+https://github.com/dcruver/org-roam-ai.git#subdirectory=mcp
 
 # From local wheel file
 pip install /path/to/org_roam_mcp-0.1.0-py3-none-any.whl
 
 # Development install from source
-git clone gitea@gitea-backend.cruver.network:dcruver/org-roam-mcp.git
-cd org-roam-mcp
+git clone https://github.com/dcruver/org-roam-ai.git
+cd org-roam-ai/mcp
 pip install -e ".[dev]"
 ```
 
 ### Updating
 
 ```bash
-# Upgrade to latest version
+# Upgrade to latest version from PyPI
 pip install --upgrade org-roam-mcp
-
-# Upgrade from git
-pip install --upgrade git+ssh://gitea@gitea-backend.cruver.network/dcruver/org-roam-mcp.git
 ```
 
 ## Troubleshooting
