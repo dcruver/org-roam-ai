@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "org-roam-mcp"
 version = "0.1.14"
-description = "MCP server for org-roam knowledge management system"
+description = "MCP server for org-roam knowledge management. Provides AI agent tools for semantic search, note creation, and daily entries. Install with: pip install org-roam-mcp or curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install.sh | bash"
 authors = [
     {name = "dcruver", email = "dcruver@example.com"}
 ]
