@@ -58,54 +58,70 @@ echo_success "Prerequisites OK"
 # ============================================================================
 # 2. Check Ollama
 # ============================================================================
-echo_info "Step 2/6: Checking Ollama installation..."
+echo_info "Step 2/6: Checking Ollama configuration..."
 
-if ! command -v ollama >/dev/null 2>&1; then
-    echo_error "Ollama is not installed"
-    echo ""
-    echo_info "Please install Ollama first:"
-    echo_info "  curl -fsSL https://ollama.com/install.sh | sh"
-    echo_info "  sudo systemctl enable ollama"
-    echo_info "  sudo systemctl start ollama"
-    echo_info "  ollama pull nomic-embed-text:latest"
-    echo_info "  ollama pull llama3.1:8b"
-    echo ""
-    echo_info "See: https://ollama.com"
-    exit 1
-fi
+# Check if using remote Ollama server
+if [ "$OLLAMA_URL" != "http://localhost:11434" ] && [ -n "$OLLAMA_URL" ]; then
+    echo_info "Using remote Ollama server: $OLLAMA_URL"
+    echo_info "Skipping local Ollama installation check"
 
-# Check Ollama service
-if systemctl is-active --quiet ollama; then
-    echo_info "Ollama service is running"
-else
-    echo_warn "Ollama service not running - starting it..."
-    sudo systemctl start ollama
-    sleep 2
-    if systemctl is-active --quiet ollama; then
-        echo_success "Ollama service started"
+    # Test remote Ollama connection
+    if curl -s "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+        echo_success "Remote Ollama server is accessible"
     else
-        echo_error "Failed to start Ollama service"
+        echo_warn "Cannot connect to remote Ollama server at $OLLAMA_URL"
+        echo_warn "Make sure the remote server is running and accessible"
+    fi
+else
+    echo_info "Using local Ollama installation"
+
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo_error "Ollama is not installed"
+        echo ""
+        echo_info "Please install Ollama first:"
+        echo_info "  curl -fsSL https://ollama.com/install.sh | sh"
+        echo_info "  sudo systemctl enable ollama"
+        echo_info "  sudo systemctl start ollama"
+        echo_info "  ollama pull nomic-embed-text:latest"
+        echo_info "  ollama pull llama3.1:8b"
+        echo ""
+        echo_info "See: https://ollama.com"
         exit 1
     fi
-fi
 
-# Check required models
-echo_info "Checking Ollama models..."
-MISSING_MODELS=()
-if ! ollama list | grep -q "nomic-embed-text"; then
-    MISSING_MODELS+=("nomic-embed-text")
-fi
-if ! ollama list | grep -q "llama3.1:8b"; then
-    MISSING_MODELS+=("llama3.1:8b")
-fi
+    # Check Ollama service
+    if systemctl is-active --quiet ollama; then
+        echo_info "Ollama service is running"
+    else
+        echo_warn "Ollama service not running - starting it..."
+        sudo systemctl start ollama
+        sleep 2
+        if systemctl is-active --quiet ollama; then
+            echo_success "Ollama service started"
+        else
+            echo_error "Failed to start Ollama service"
+            exit 1
+        fi
+    fi
 
-if [ ${#MISSING_MODELS[@]} -ne 0 ]; then
-    echo_error "Missing required Ollama models: ${MISSING_MODELS[*]}"
-    echo_info "Install with:"
-    for model in "${MISSING_MODELS[@]}"; do
-        echo_info "  ollama pull $model"
-    done
-    exit 1
+    # Check required models
+    echo_info "Checking Ollama models..."
+    MISSING_MODELS=()
+    if ! ollama list | grep -q "nomic-embed-text"; then
+        MISSING_MODELS+=("nomic-embed-text")
+    fi
+    if ! ollama list | grep -q "llama3.1:8b"; then
+        MISSING_MODELS+=("llama3.1:8b")
+    fi
+
+    if [ ${#MISSING_MODELS[@]} -ne 0 ]; then
+        echo_error "Missing required Ollama models: ${MISSING_MODELS[*]}"
+        echo_info "Install with:"
+        for model in "${MISSING_MODELS[@]}"; do
+            echo_info "  ollama pull $model"
+        done
+        exit 1
+    fi
 fi
 
 echo_success "Ollama configured"
