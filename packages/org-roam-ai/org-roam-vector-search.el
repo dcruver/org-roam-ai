@@ -2,7 +2,7 @@
 
 ;; Author: David Cruver <dcruver@users.noreply.github.com>
 ;; URL: https://github.com/dcruver/org-roam-ai
-;; Version: 1.3.0
+;; Version: 1.4.0
 ;; Package-Requires: ((emacs "27.1") (org-roam "2.2"))
 
 ;;; Commentary:
@@ -21,7 +21,7 @@
 
 ;;; Version
 
-(defconst org-roam-semantic-version "1.3.0"
+(defconst org-roam-semantic-version "1.4.0"
   "Version of the org-roam-semantic package suite.")
 
 (defun org-roam-semantic-version ()
@@ -74,12 +74,7 @@ Change this only if you switch embedding models."
   :type 'integer
   :group 'org-roam-vector-search)
 
-(defcustom org-roam-semantic-enable-chunking nil
-  "Enable section-level chunking for more granular embeddings.
-When enabled, generates embeddings for individual sections and subsections
-in addition to file-level embeddings."
-  :type 'boolean
-  :group 'org-roam-vector-search)
+;; Chunking is now always enabled for optimal semantic search performance
 
 (defcustom org-roam-semantic-min-chunk-size 100
   "Minimum word count for a section to get its own embedding.
@@ -102,10 +97,10 @@ Higher values (closer to 1.0) mean more similar notes only."
 
 ;;; Utility Functions
 
-(defun org-roam-semantic-get-similar-data (query-text &optional limit chunk-level cutoff)
+(defun org-roam-semantic-get-similar-data (query-text &optional limit cutoff)
   "Get similarity data programmatically.
-Returns list of (file similarity [position heading-text]) tuples.
-If CHUNK-LEVEL is non-nil and chunking is enabled, searches chunks instead of whole files.
+Returns list of (file similarity position heading-text) tuples.
+Searches chunks within files when chunking is enabled.
 If CUTOFF is provided, filters results to only include similarities above that threshold."
   (let ((limit (or limit 10))
         (cutoff (or cutoff 0.0))
@@ -116,22 +111,15 @@ If CUTOFF is provided, filters results to only include similarities above that t
           (progn
             ;; Compare with all notes that have embeddings
             (dolist (file (org-roam-list-files))
-              (if (and chunk-level org-roam-semantic-enable-chunking)
-                  ;; Search chunks within file
-                  (let ((all-embeddings (org-roam-semantic--get-all-embeddings file)))
-                    (dolist (chunk all-embeddings)
-                      (let* ((position (nth 0 chunk))
-                             (heading-text (nth 1 chunk))
-                             (embedding (nth 2 chunk))
-                             (similarity (org-roam-semantic--cosine-similarity query-embedding embedding)))
-                        (when (and similarity (>= similarity cutoff))
-                          (push (list file similarity position heading-text) similarities)))))
-                ;; Search file-level embeddings
-                (let ((note-embedding (org-roam-semantic--get-embedding file)))
-                  (when note-embedding
-                    (let ((similarity (org-roam-semantic--cosine-similarity query-embedding note-embedding)))
-                      (when (and similarity (>= similarity cutoff))
-                        (push (list file similarity) similarities)))))))
+              ;; Search chunks within file
+              (let ((all-embeddings (org-roam-semantic--get-all-embeddings file)))
+                (dolist (chunk all-embeddings)
+                  (let* ((position (nth 0 chunk))
+                         (heading-text (nth 1 chunk))
+                         (embedding (nth 2 chunk))
+                         (similarity (org-roam-semantic--cosine-similarity query-embedding embedding)))
+                    (when (and similarity (>= similarity cutoff))
+                      (push (list file similarity position heading-text) similarities))))))
             ;; Sort by similarity and take top results
             (setq similarities (sort similarities (lambda (a b) (> (cadr a) (cadr b)))))
             (if (> (length similarities) limit)
@@ -508,8 +496,8 @@ Returns list of (position heading-text embedding) tuples."
       (nreverse embeddings))))
 
 (defun org-roam-semantic--has-embedding-p (file)
-  "Check if note already has an embedding."
-  (not (null (org-roam-semantic--get-embedding file))))
+  "Check if note already has chunk embeddings."
+  (not (null (org-roam-semantic--get-all-embeddings file))))
 
 ;;; Main Embedding Functions
 
@@ -543,9 +531,6 @@ Returns list of (position heading-text embedding) tuples."
   (interactive (list (buffer-file-name)))
   (unless file
     (error "No file associated with current buffer"))
-  (unless org-roam-semantic-enable-chunking
-    (error "Chunking is not enabled. Set org-roam-semantic-enable-chunking to t"))
-
   (let* ((chunks (org-roam-semantic--parse-chunks file))
          (total (length chunks))
          (processed 0)
@@ -594,42 +579,14 @@ Returns list of (position heading-text embedding) tuples."
 
 ;;;###autoload
 (defun org-roam-semantic-generate-all-embeddings ()
-  "Generate embeddings for all org-roam notes that don't have them."
+  "Generate chunk embeddings for all org-roam notes that don't have them."
   (interactive)
-  (let* ((files (org-roam-list-files))
-         (total (length files))
-         (processed 0)
-         (skipped 0))
-    (message "Starting embedding generation for %d notes..." total)
-    (dolist (file files)
-      (if (org-roam-semantic--has-embedding-p file)
-          (progn
-            (cl-incf skipped)
-            (message "Skipping %s (already has embedding) [%d/%d]"
-                   (file-name-nondirectory file) (+ processed skipped) total))
-        (let ((content (org-roam-semantic--get-content file)))
-          (if content
-              (progn
-                (cl-incf processed)
-                (message "Processing %s [%d/%d]..."
-                       (file-name-nondirectory file) (+ processed skipped) total)
-                (let ((embedding (org-roam-ai-generate-embedding content)))
-                  (if embedding
-                      (org-roam-semantic--store-embedding file embedding)
-                    (message "Failed to generate embedding for %s"
-                           (file-name-nondirectory file)))))
-            (cl-incf skipped)
-            (message "Skipping %s (no content) [%d/%d]"
-                   (file-name-nondirectory file) (+ processed skipped) total)))))
-    (message "Embedding generation complete: %d processed, %d skipped"
-           processed skipped)))
+  (org-roam-semantic-generate-all-chunks))
 
 ;;;###autoload
 (defun org-roam-semantic-generate-all-chunks ()
   "Generate chunk embeddings for all org-roam notes."
   (interactive)
-  (unless org-roam-semantic-enable-chunking
-    (error "Chunking is not enabled. Set org-roam-semantic-enable-chunking to t"))
 
   (let* ((files (org-roam-list-files))
          (total-files (length files))
@@ -773,8 +730,6 @@ If CHUNK-LEVEL is non-nil, searches chunks instead of whole files."
 (defun org-roam-semantic-search-chunks (concept)
   "Interactive search for note chunks by concept - displays results buffer."
   (interactive "sConcept to search for (chunks): ")
-  (unless org-roam-semantic-enable-chunking
-    (error "Chunking is not enabled. Set org-roam-semantic-enable-chunking to t"))
   (org-roam-semantic-find-similar concept t))
 
 ;;;###autoload
@@ -797,7 +752,7 @@ All notes above the similarity threshold will be inserted."
            (content (org-roam-semantic--get-content current-file))
            (query-text (or content title))
            (cutoff (or cutoff org-roam-semantic-similarity-cutoff))
-           (similarities (org-roam-semantic-get-similar-data query-text nil nil cutoff))) ; Use cutoff, no limit
+           (similarities (org-roam-semantic-get-similar-data query-text nil cutoff))) ; Use cutoff, no limit
 
       ;; Filter out the current note from results
       (setq similarities (seq-remove (lambda (result)
@@ -849,44 +804,34 @@ All notes above the similarity threshold will be inserted."
          (embedding-sizes '()))
 
     (dolist (file all-files)
-      (let ((file-embedding (org-roam-semantic--get-embedding file)))
-        (if file-embedding
-            (progn
-              (cl-incf notes-with-embeddings)
-              (push (length file-embedding) embedding-sizes))
-          (push (file-name-nondirectory file) notes-without-embeddings)))
-
-      ;; Count chunks if chunking is enabled
-      (when org-roam-semantic-enable-chunking
-        (let ((all-embeddings (org-roam-semantic--get-all-embeddings file)))
-          (setq total-chunks (+ total-chunks (length (org-roam-semantic--parse-chunks file))))
-          (setq chunks-with-embeddings (+ chunks-with-embeddings (length all-embeddings))))))
+      ;; Count chunks and their embeddings
+      (let ((all-embeddings (org-roam-semantic--get-all-embeddings file)))
+        (let ((chunk-count (length (org-roam-semantic--parse-chunks file))))
+          (setq total-chunks (+ total-chunks chunk-count))
+          (setq chunks-with-embeddings (+ chunks-with-embeddings (length all-embeddings)))
+          (when (> chunk-count 0)
+            (cl-incf notes-with-embeddings))
+          (dolist (chunk-embedding all-embeddings)
+            (push (length (nth 2 chunk-embedding)) embedding-sizes)))))
 
     (let ((coverage (if (> total-notes 0)
                        (/ (* 100.0 notes-with-embeddings) total-notes)
                      0))
-          (chunk-coverage (if (and org-roam-semantic-enable-chunking (> total-chunks 0))
+          (chunk-coverage (if (> total-chunks 0)
                              (/ (* 100.0 chunks-with-embeddings) total-chunks)
                            0))
           (unique-sizes (seq-uniq embedding-sizes)))
 
-      (if org-roam-semantic-enable-chunking
-          (message "Vector Search Status: %d/%d notes (%.1f%%), %d/%d chunks (%.1f%%) have embeddings. Sizes: %s"
-                   notes-with-embeddings total-notes coverage
-                   chunks-with-embeddings total-chunks chunk-coverage unique-sizes)
-        (message "Vector Search Status: %d/%d notes have embeddings (%.1f%% coverage). Embedding sizes: %s"
-                 notes-with-embeddings total-notes coverage unique-sizes))
-      (when notes-without-embeddings
-        (with-current-buffer (get-buffer-create "*Embedding Status*")
-          (erase-buffer)
-          (insert (format "Embedding Coverage: %d/%d notes (%.1f%%)\n"
-                         notes-with-embeddings total-notes coverage))
-          (insert (format "Embedding dimensions found: %s\n\n" unique-sizes))
-          (when notes-without-embeddings
-            (insert "Notes without embeddings:\n")
-            (dolist (file notes-without-embeddings)
-              (insert (format "- %s\n" file))))
-          (display-buffer (current-buffer)))))))
+      (message "Vector Search Status: %d/%d files with chunks, %d/%d total chunks (%.1f%%) have embeddings. Sizes: %s"
+               notes-with-embeddings total-notes
+               chunks-with-embeddings total-chunks chunk-coverage unique-sizes)
+      (with-current-buffer (get-buffer-create "*Embedding Status*")
+        (erase-buffer)
+        (insert (format "Chunk Embedding Coverage: %d/%d files have chunks, %d/%d chunks (%.1f%%) embedded\n"
+                       notes-with-embeddings total-notes
+                       chunks-with-embeddings total-chunks chunk-coverage))
+        (insert (format "Embedding dimensions found: %s\n\n" unique-sizes))
+        (display-buffer (current-buffer))))))
 
 ;;;;;; Minimal org → Markdown for n8n (ox-md), safe for files with leading drawers
 
@@ -977,11 +922,8 @@ wrap contents under a synthetic top-level heading using #+title or filename."
     (when (and (derived-mode-p 'org-mode)
                (buffer-file-name)
                (org-roam-file-p))
-      (if org-roam-semantic-enable-chunking
-          ;; Use chunking if enabled
-          (org-roam-semantic-generate-chunks-for-file (buffer-file-name))
-        ;; Otherwise use file-level embedding
-        (org-roam-semantic-generate-embedding (buffer-file-name))))))
+      ;; Always use chunking for optimal semantic search
+      (org-roam-semantic-generate-chunks-for-file (buffer-file-name))))))
 
 ;; Add the hook
 (add-hook 'before-save-hook 'org-roam-semantic--update-on-save)
