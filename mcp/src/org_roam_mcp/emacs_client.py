@@ -87,7 +87,10 @@ class EmacsClient:
         try:
             # Check if the package feature is loaded
             check_expr = f'(featurep (quote {package_name}))'
-            command = f"emacsclient --server-file={self.server_file} -e '{check_expr}'"
+            if os.path.exists(self.server_file):
+                command = f"emacsclient --server-file={self.server_file} -e '{check_expr}'"
+            else:
+                command = f"emacsclient -e '{check_expr}'"
             response = self._execute_command(command)
             return response.strip() == 't'
         except Exception as e:
@@ -282,8 +285,11 @@ class EmacsClient:
                           .replace('"', '\\"')
                           .replace('`', '\\`')
                           .replace('$', '\\$'))
-        
-        command = f'emacsclient --server-file={self.server_file} -e "{safe_expression}"'
+
+        if os.path.exists(self.server_file):
+            command = f'emacsclient --server-file={self.server_file} -e "{safe_expression}"'
+        else:
+            command = f'emacsclient -e "{safe_expression}"'
         
         response = self._execute_command(command)
         return self._parse_json_response(response)
@@ -466,7 +472,10 @@ class EmacsClient:
 
         # This returns raw content, not JSON
         try:
-            command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+            if os.path.exists(self.server_file):
+                command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+            else:
+                command = f'emacsclient -e "{expression}"'
             response = self._execute_command(command)
 
             # Clean the response - it may have literal \n characters
@@ -511,7 +520,10 @@ class EmacsClient:
         try:
             # This function may take a while for large corpora (handled by default subprocess timeout)
             # The function returns the number of embeddings generated
-            command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+            if os.path.exists(self.server_file):
+                command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+            else:
+                command = f'emacsclient -e "{expression}"'
             response = self._execute_command(command)
 
             # Parse the response - might be a number or a message string
@@ -529,7 +541,10 @@ class EmacsClient:
 
             # Save all modified org-roam buffers to persist embeddings to disk
             # This ensures the agent can immediately see the updated files
-            save_cmd = f'emacsclient --server-file={self.server_file} -e "(save-some-buffers t (lambda () (and (buffer-file-name) (string-match-p \\"\\\\.org\\$\\" (buffer-file-name)))))"'
+            if os.path.exists(self.server_file):
+                save_cmd = f'emacsclient --server-file={self.server_file} -e "(save-some-buffers t (lambda () (and (buffer-file-name) (string-match-p \\"\\\\.org\\$\\" (buffer-file-name)))))"'
+            else:
+                save_cmd = f'emacsclient -e "(save-some-buffers t (lambda () (and (buffer-file-name) (string-match-p \\"\\\\.org\\$\\" (buffer-file-name)))))"'
             try:
                 self._execute_command(save_cmd)
                 logger.info(f"Saved all modified org-roam buffers")
