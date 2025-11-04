@@ -319,14 +319,12 @@ if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFI
     # Create or update Doom config.el with Ollama settings
     if [ ! -f "$DOOM_CONFIG_FILE" ]; then
         echo_info "Creating basic Doom config.el..."
-        cat > "$DOOM_CONFIG_FILE" << 'DOOM_EOF'
-;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
-
-;; Place your private configuration here! Remember, you do not need to run 'doom
-;; sync' after modifying this file!
-
-;; org-roam-ai configuration will be added below
-DOOM_EOF
+        echo ";;; \$DOOMDIR/config.el -*- lexical-binding: t; -*-" > "$DOOM_CONFIG_FILE"
+        echo "" >> "$DOOM_CONFIG_FILE"
+        echo ";; Place your private configuration here! Remember, you do not need to run 'doom" >> "$DOOM_CONFIG_FILE"
+        echo ";; sync' after modifying this file!" >> "$DOOM_CONFIG_FILE"
+        echo "" >> "$DOOM_CONFIG_FILE"
+        echo ";; org-roam-ai configuration will be added below" >> "$DOOM_CONFIG_FILE"
     fi
 
     # Add Ollama configuration to Doom config
