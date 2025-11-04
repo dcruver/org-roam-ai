@@ -201,6 +201,33 @@ if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFI
         DOOM_CMD="$DOOM_BIN"
     fi
 
+    # Check if packages.el exists, create it if not
+    if [ ! -f "$PACKAGES_FILE" ]; then
+        echo_info "Creating Doom packages.el file..."
+        mkdir -p "$(dirname "$PACKAGES_FILE")"
+        cat > "$PACKAGES_FILE" << 'EOF'
+;; -*- no-byte-compile: t; -*-
+;;; $DOOMDIR/packages.el
+
+(package! org-roam
+  :recipe (:host github :repo "org-roam/org-roam" :branch "main"))
+(package! sqlite3)
+(package! ox-gfm)
+(package! org-roam-ui)
+(package! claude-code-ide
+  :recipe (:host github :repo "manzaltu/claude-code-ide.el"))
+
+;; org-roam-semantic for vector search
+(package! org-roam-semantic
+  :recipe (:host github :repo "dcruver/org-roam-semantic"))
+
+(package! gptel)            ; AI client (works great with Ollama and APIs)
+;; If you want Docker TRAMP helpers:
+(package! docker-tramp)     ; optional, handy for containers
+EOF
+        echo_success "Created $PACKAGES_FILE"
+    fi
+
     # Check if org-roam is in Doom packages
     if grep -q "org-roam" "$PACKAGES_FILE" 2>/dev/null; then
         echo_success "org-roam found in Doom packages.el"
