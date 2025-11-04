@@ -295,57 +295,6 @@ else
     fi
 fi
 
-    # Install org-roam
-    if emacs --batch --eval "
-(progn
-  (require 'package)
-  (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
-  (package-initialize)
-  (package-refresh-contents)
-  (package-install 'org-roam)
-  (message \"org-roam installed\"))" 2>/dev/null; then
-        echo_success "org-roam installed successfully"
-
-        # Basic configuration
-        mkdir -p "${ORG_ROAM_PATH}"
-        echo_success "org-roam directory: ${ORG_ROAM_PATH}"
-    else
-        echo_error "Failed to install org-roam automatically"
-        echo ""
-        echo_info "Please install org-roam manually. First ensure MELPA is added to your package archives:"
-        echo_info ""
-        echo_info "Add to your Emacs init file (~/.emacs.d/init.el):"
-        echo_info "  (require 'package)"
-        echo_info "  (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)"
-        echo_info ""
-        echo_info "Then install manually in Emacs:"
-        echo_info "  M-x package-refresh-contents RET"
-        echo_info "  M-x package-install RET org-roam RET"
-        echo ""
-        exit 1
-    fi
-
-    # Install org-roam
-    if emacs --batch --eval "(progn (package-install 'org-roam) (message \"org-roam installed\"))" 2>/dev/null; then
-        echo_success "org-roam installed successfully"
-
-        # Basic configuration
-        echo_info "Configuring org-roam..."
-        mkdir -p "${ORG_ROAM_PATH}"
-        echo_success "org-roam directory: ${ORG_ROAM_PATH}"
-    else
-        echo_error "Failed to install org-roam automatically"
-        echo ""
-        echo_info "Please install org-roam manually:"
-        echo_info "  emacs --batch --eval \"(progn (package-refresh-contents) (package-install 'org-roam))\""
-        echo_info ""
-        echo_info "Or install manually in Emacs:"
-        echo_info "  M-x package-install RET org-roam RET"
-        echo ""
-        exit 1
-    fi
-fi
-
 # Create org-roam directory
 mkdir -p "${ORG_ROAM_PATH}"
 echo_success "org-roam directory: ${ORG_ROAM_PATH}"
