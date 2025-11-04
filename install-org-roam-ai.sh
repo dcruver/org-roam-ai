@@ -12,5 +12,5 @@ export OLLAMA_GENERATION_MODEL=llama3.1:8b           # Generation model
 export ENABLE_CHUNKING=false                          # Enable text chunking
 export MIN_CHUNK_SIZE=100                             # Minimum chunk size
 
-# Run the installation script from GitHub
-curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/scripts/install-server.sh | bash
+# Run the local installation script
+bash "${INSTALL_DIR}/scripts/install-server.sh"
