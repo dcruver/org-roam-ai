@@ -108,8 +108,8 @@ org-roam-ai provides AI-powered semantic search and API services for [org-roam](
 **Option A: One-command standalone installation (Recommended)**
 ```bash
 # Install everything automatically (virtual env, service, Emacs config)
-# Installs from Gitea Packages, requires straight.el prerequisite
-curl -fsSL https://gitea-backend.cruver.network/dcruver/org-roam-ai/raw/branch/main/install-mcp-standalone.sh | bash
+# Installs from PyPI, requires straight.el prerequisite
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/install-mcp-standalone.sh | bash
 
 # Service starts automatically
 sudo systemctl status org-roam-mcp
@@ -118,7 +118,7 @@ sudo systemctl status org-roam-mcp
 **Uninstallation**
 ```bash
 # Remove all components installed by the standalone installer
-curl -fsSL https://gitea-backend.cruver.network/dcruver/org-roam-ai/raw/branch/main/uninstall-mcp.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/uninstall-mcp.sh | bash
 ```
 
 **Option B: Manual installation**
