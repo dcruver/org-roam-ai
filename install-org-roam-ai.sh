@@ -188,27 +188,25 @@ echo_info "Checking for org-roam package..."
 if emacs --batch --eval "(require 'org-roam)" 2>/dev/null; then
     echo_success "org-roam is installed"
 else
-    echo_warn "org-roam is not installed in Emacs - installing it now..."
+    echo_error "org-roam is not installed in Emacs"
     echo ""
-
-    # Install org-roam using Emacs package manager
-    echo_info "Installing org-roam via package.el..."
-
-    # Ensure MELPA is available (org-roam is hosted there)
-    echo_info "Ensuring MELPA package archive is available..."
-    emacs --batch --eval "
-(progn
-  (require 'package)
-  (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
-  (package-initialize)
-  (message \"MELPA added to package archives\"))" 2>/dev/null || echo_warn "Could not add MELPA - may already be configured"
-
-    # Refresh package list
-    if emacs --batch --eval "(progn (package-refresh-contents) (message \"Package list refreshed\"))" 2>/dev/null; then
-        echo_info "Package list refreshed"
-    else
-        echo_warn "Could not refresh package list - continuing anyway"
-    fi
+    echo_info "org-roam is a required prerequisite for org-roam-ai."
+    echo_info "Please install org-roam first:"
+    echo ""
+    echo_info "1. Ensure MELPA is in your package archives (~/.emacs.d/init.el):"
+    echo_info "   (require 'package)"
+    echo_info "   (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)"
+    echo ""
+    echo_info "2. Install org-roam in Emacs:"
+    echo_info "   M-x package-refresh-contents RET"
+    echo_info "   M-x package-install RET org-roam RET"
+    echo ""
+    echo_info "3. Configure org-roam (optional):"
+    echo_info "   M-x customize-group RET org-roam RET"
+    echo_info "   Set 'Org Roam Directory' to: ~/org-roam"
+    echo ""
+    exit 1
+fi
 
     # Install org-roam
     if emacs --batch --eval "
