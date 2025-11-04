@@ -124,6 +124,9 @@ setup_emacs_config() {
 
     CONFIG_FILE="$HOME/.emacs.d/init-org-roam-mcp.el"
 
+    # Ensure .emacs.d directory exists
+    mkdir -p "$HOME/.emacs.d"
+
     # Create configuration file for MCP-required packages
     cat > "$CONFIG_FILE" << 'EOF'
 ;; Configuration for org-roam MCP server packages
