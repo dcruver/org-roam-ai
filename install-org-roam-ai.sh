@@ -188,19 +188,38 @@ echo_info "Checking for org-roam package..."
 if emacs --batch --eval "(require 'org-roam)" 2>/dev/null; then
     echo_success "org-roam is installed"
 else
-    echo_error "org-roam is not installed in Emacs"
+    echo_warn "org-roam is not installed in Emacs - installing it now..."
     echo ""
-    echo_info "Please install and configure org-roam before running this script."
-    echo ""
-    echo_info "Installation instructions (via package.el or straight.el):"
-    echo_info "  M-x package-install RET org-roam RET"
-    echo_info ""
-    echo_info "Or via straight.el:"
-    echo_info "  (straight-use-package 'org-roam)"
-    echo_info ""
-    echo_info "Full instructions: https://github.com/org-roam/org-roam"
-    echo ""
-    exit 1
+
+    # Install org-roam using Emacs package manager
+    echo_info "Installing org-roam via package.el..."
+
+    # First refresh package list
+    if emacs --batch --eval "(progn (package-refresh-contents) (message \"Package list refreshed\"))" 2>/dev/null; then
+        echo_info "Package list refreshed"
+    else
+        echo_warn "Could not refresh package list - continuing anyway"
+    fi
+
+    # Install org-roam
+    if emacs --batch --eval "(progn (package-install 'org-roam) (message \"org-roam installed\"))" 2>/dev/null; then
+        echo_success "org-roam installed successfully"
+
+        # Basic configuration
+        echo_info "Configuring org-roam..."
+        mkdir -p "${ORG_ROAM_PATH}"
+        echo_success "org-roam directory: ${ORG_ROAM_PATH}"
+    else
+        echo_error "Failed to install org-roam automatically"
+        echo ""
+        echo_info "Please install org-roam manually:"
+        echo_info "  emacs --batch --eval \"(progn (package-refresh-contents) (package-install 'org-roam))\""
+        echo_info ""
+        echo_info "Or install manually in Emacs:"
+        echo_info "  M-x package-install RET org-roam RET"
+        echo ""
+        exit 1
+    fi
 fi
 
 # Create org-roam directory
