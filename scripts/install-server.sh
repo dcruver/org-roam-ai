@@ -93,15 +93,13 @@ else
     if systemctl is-active --quiet ollama; then
         echo_info "Ollama service is running"
     else
-        echo_warn "Ollama service not running - starting it..."
-        sudo systemctl start ollama
-        sleep 2
-        if systemctl is-active --quiet ollama; then
-            echo_success "Ollama service started"
-        else
-            echo_error "Failed to start Ollama service"
-            exit 1
-        fi
+        echo_error "Ollama service is not running"
+        echo ""
+        echo_info "Please start Ollama first:"
+        echo_info "  sudo systemctl start ollama"
+        echo_info "  sudo systemctl enable ollama"
+        echo ""
+        exit 1
     fi
 
     # Check required models
