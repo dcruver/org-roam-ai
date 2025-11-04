@@ -200,9 +200,9 @@ else
 fi
 
 # ============================================================================
-# 6. Configure Emacs Packages
+# 5. Configure Emacs Packages
 # ============================================================================
-echo_info "Step 6/7: Configuring Emacs packages..."
+echo_info "Step 5/7: Configuring Emacs packages..."
 
 # Check if Doom Emacs is being used
 DOOM_DIR="$HOME/.doom.d"
@@ -215,16 +215,82 @@ if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFI
     # Determine which Doom setup is being used
     if [ -d "$DOOM_DIR" ]; then
         DOOM_CONFIG_FILE="$DOOM_DIR/config.el"
+        DOOM_PACKAGES_FILE="$DOOM_DIR/packages.el"
     else
         DOOM_CONFIG_FILE="$DOOM_CONFIG_DIR/config.el"
+        DOOM_PACKAGES_FILE="$DOOM_CONFIG_DIR/packages.el"
     fi
 
-    # Configure Ollama settings for org-roam-ai
-    echo_info "Configuring org-roam-ai for Doom Emacs..."
+    # Configure straight.el packages for org-roam-ai
+    echo_info "Adding org-roam-ai packages to Doom configuration..."
+
+    # Add to packages.el if not already present
+    if ! grep -q "org-roam-ai" "$DOOM_PACKAGES_FILE" 2>/dev/null; then
+        cat >> "$DOOM_PACKAGES_FILE" << 'EOF'
+
+;; org-roam-ai packages
+(package! org-roam-ai-assistant :recipe (:host github :repo "dcruver/org-roam-ai" :files ("packages/org-roam-ai/org-roam-ai-assistant.el")))
+(package! org-roam-api :recipe (:host github :repo "dcruver/org-roam-ai" :files ("packages/org-roam-ai/org-roam-api.el")))
+(package! org-roam-vector-search :recipe (:host github :repo "dcruver/org-roam-ai" :files ("packages/org-roam-ai/org-roam-vector-search.el")))
+EOF
+        echo_success "Added org-roam-ai packages to packages.el"
+    else
+        echo_info "org-roam-ai packages already configured in packages.el"
+    fi
+
+    # Configure Ollama settings in config.el
+    if ! grep -q "org-roam-ai" "$DOOM_CONFIG_FILE" 2>/dev/null; then
+        cat >> "$DOOM_CONFIG_FILE" << EOF
+
+;; org-roam-ai configuration
+(after! org-roam
+  (require 'org-roam-ai-assistant)
+  (require 'org-roam-api)
+  (require 'org-roam-vector-search)
+
+  ;; Configure Ollama settings
+  (setq org-roam-ai-ollama-url "${OLLAMA_URL}")
+  (setq org-roam-ai-embedding-model "${OLLAMA_EMBEDDING_MODEL}")
+  (setq org-roam-ai-generation-model "${OLLAMA_GENERATION_MODEL}")
+  (setq org-roam-ai-enable-chunking ${ENABLE_CHUNKING})
+  (setq org-roam-ai-min-chunk-size ${MIN_CHUNK_SIZE})
+
+  ;; Set org-roam directory
+  (setq org-roam-directory "${ORG_ROAM_PATH}")
+)
+EOF
+        echo_success "Added org-roam-ai configuration to config.el"
+    else
+        echo_info "org-roam-ai already configured in config.el"
+    fi
+
     echo_success "Doom Emacs packages configured"
 else
-    echo_info "Standard Emacs detected - manual configuration required"
-    echo_info "Please see the README for manual installation instructions"
+    echo_info "Standard Emacs detected - configuring with straight.el"
+
+    # Check if straight.el is available
+    if emacs --batch --eval "(require 'straight)" 2>/dev/null; then
+        echo_info "straight.el detected - configuring packages"
+
+        # Configure straight.el packages
+        emacs --batch --eval "
+(require 'straight)
+(straight-use-package
+ '(org-roam-ai-assistant :host github :repo \"dcruver/org-roam-ai\"
+                        :files (\"packages/org-roam-ai/org-roam-ai-assistant.el\")))
+(straight-use-package
+ '(org-roam-api :host github :repo \"dcruver/org-roam-ai\"
+                :files (\"packages/org-roam-ai/org-roam-api.el\")))
+(straight-use-package
+ '(org-roam-vector-search :host github :repo \"dcruver/org-roam-ai\"
+                         :files (\"packages/org-roam-ai/org-roam-vector-search.el\")))
+" 2>/dev/null && echo_success "straight.el packages installed" || echo_warn "Failed to install straight.el packages"
+
+    else
+        echo_warn "straight.el not found - manual configuration required"
+        echo_info "Please install straight.el and add the org-roam-ai packages manually"
+        echo_info "See: https://github.com/radian-software/straight.el"
+    fi
 fi
 
 # Create org-roam directory
@@ -241,28 +307,9 @@ else
 fi
 
 # ============================================================================
-# 4. Clone Repository
+# 4. Install MCP Server (Python)
 # ============================================================================
-echo_info "Step 4/6: Cloning org-roam-ai repository..."
-
-sudo mkdir -p "${INSTALL_DIR}"
-sudo chown $USER:$USER "${INSTALL_DIR}"
-
-if [ -d "${INSTALL_DIR}/.git" ]; then
-    echo_info "Repository already cloned, pulling latest..."
-    cd "${INSTALL_DIR}"
-    git pull
-else
-    git clone https://github.com/dcruver/org-roam-ai.git "${INSTALL_DIR}"
-fi
-
-cd "${INSTALL_DIR}"
-echo_success "Repository cloned/updated"
-
-# ============================================================================
-# 5. Install MCP Server (Python)
-# ============================================================================
-echo_info "Step 5/6: Installing MCP server..."
+echo_info "Step 4/6: Installing MCP server..."
 
 # Check Python version
 if command -v python3 >/dev/null 2>&1; then
@@ -273,24 +320,30 @@ else
     exit 1
 fi
 
-# Create virtual environment
-MCP_VENV="${INSTALL_DIR}/mcp/.venv"
+# Create virtual environment in user's home directory
+MCP_DIR="$HOME/.org-roam-ai-mcp"
+MCP_VENV="${MCP_DIR}/.venv"
+
 if [ ! -d "${MCP_VENV}" ]; then
-    cd "${INSTALL_DIR}/mcp"
+    echo_info "Setting up MCP server..."
+    mkdir -p "${MCP_DIR}"
+    cd "${MCP_DIR}"
+
+    # Install MCP server from PyPI
     python3 -m venv .venv
     source .venv/bin/activate
     pip install --upgrade pip
-    pip install -e ".[dev]"
+    pip install org-roam-mcp
     deactivate
-    echo_success "MCP server installed"
+    echo_success "MCP server installed to ${MCP_DIR}"
 else
-    echo_warn "MCP venv already exists, skipping"
+    echo_warn "MCP server already installed, skipping"
 fi
 
 # ============================================================================
-# 7. Summary
+# 6. Summary
 # ============================================================================
-echo_info "Step 7/7: Installation complete!"
+echo_info "Step 6/6: Installation complete!"
 
 # ============================================================================
 # Summary
