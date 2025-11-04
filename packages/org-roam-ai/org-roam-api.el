@@ -101,11 +101,11 @@
 
     ;; Generate embeddings if org-roam-semantic is available
     (condition-case err
-        (when (fboundp 'org-roam-semantic-generate-embedding)
-          (message "Generating embedding for new note: %s" (file-name-nondirectory file-path))
-          (org-roam-semantic-generate-embedding file-path))
+        (when (fboundp 'org-roam-semantic-generate-chunks-for-file)
+          (message "Generating chunk embeddings for new note: %s" (file-name-nondirectory file-path))
+          (org-roam-semantic-generate-chunks-for-file file-path))
       (error
-       (message "Warning: Failed to generate embedding for %s: %s"
+       (message "Warning: Failed to generate embeddings for %s: %s"
                 (file-name-nondirectory file-path)
                 (error-message-string err))))
 

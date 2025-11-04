@@ -267,15 +267,7 @@ Returns list of (position heading-text content word-count level)."
                     (push (list heading-pos heading-text full-content word-count level :id-only) chunks)))))))
         (message "Debug Parse: Manual scan completed, found %d headings" heading-count))
 
-      ;; Add file-level chunk if it would be meaningful
-      (let* ((file-content (org-roam-semantic--get-content file))
-             (file-word-count (when file-content (org-roam-semantic--count-words file-content))))
-        (when (and file-content
-                   (>= file-word-count org-roam-semantic-min-chunk-size)
-                   ;; Only add file-level if there are no section chunks or it's significantly larger
-                   (or (null chunks)
-                       (> file-word-count (* 1.5 (apply 'max (mapcar (lambda (chunk) (nth 3 chunk)) chunks))))))
-          (push (list (point-min) (or file-title "File") file-content file-word-count 0) chunks)))
+
 
       (nreverse chunks))))
 
@@ -507,23 +499,11 @@ Returns list of (position heading-text embedding) tuples."
 
 ;;;###autoload
 (defun org-roam-semantic-generate-embedding (file)
-  "Generate and store embedding for a single note."
+  "Generate and store chunk embeddings for a single note."
   (interactive (list (buffer-file-name)))
   (unless file
     (error "No file associated with current buffer"))
-  (let ((content (org-roam-semantic--get-content file)))
-    (if content
-        (progn
-          (message "Generating embedding for %s..." (file-name-nondirectory file))
-          (let ((embedding (org-roam-ai-generate-embedding content)))
-            (if embedding
-                (progn
-                  (org-roam-semantic--store-embedding file embedding)
-                  (message "Embedding generated and stored for %s"
-                         (file-name-nondirectory file)))
-              (message "Failed to generate embedding for %s"
-                     (file-name-nondirectory file)))))
-      (message "No content found in %s" (file-name-nondirectory file)))))
+  (org-roam-semantic-generate-chunks-for-file file))
 
 ;;;###autoload
 (defun org-roam-semantic-generate-chunks-for-file (file)
@@ -609,18 +589,33 @@ Returns list of (position heading-text embedding) tuples."
           (let* ((position (nth 0 chunk))
                  (heading-text (nth 1 chunk))
                  (content (nth 2 chunk))
+                 (word-count (nth 3 chunk))
+                 (level (nth 4 chunk))
+                 (chunk-type (nth 5 chunk))
                  (existing-embedding (org-roam-semantic--get-embedding file position)))
 
-            (if existing-embedding
-                (cl-incf skipped-chunks)
-              (progn
-                (message "  Generating embedding for: %s" heading-text)
-                (let ((embedding (org-roam-ai-generate-embedding content)))
-                  (if embedding
-                      (progn
-                        (org-roam-semantic--store-embedding file embedding heading-text)
-                        (cl-incf processed-chunks))
-                    (message "  Failed to generate embedding for: %s" heading-text)))))))))
+            (cond
+             ;; ID-only chunks - just ensure they have an ID
+             ((eq chunk-type :id-only)
+              (org-roam-semantic--ensure-heading-id file heading-text)
+              (cl-incf processed-chunks)
+              (message "  Added ID to short section: %s [%d/%d]" heading-text (+ processed-chunks skipped-chunks) total-chunks))
+
+             ;; Embedding chunks - check if already has embedding
+             (existing-embedding
+              (cl-incf skipped-chunks)
+              (message "  Skipping %s (already has embedding) [%d/%d]" heading-text (+ processed-chunks skipped-chunks) total-chunks))
+
+             ;; Embedding chunks without embeddings - generate them
+             (t
+              (cl-incf processed-chunks)
+              (message "  Processing %s [%d/%d]..." heading-text (+ processed-chunks skipped-chunks) total-chunks)
+              (let ((embedding (org-roam-ai-generate-embedding content)))
+                (if embedding
+                    (progn
+                      (org-roam-semantic--store-embedding file embedding heading-text)
+                      (message "  Successfully stored embedding for %s" heading-text))
+                  (message "  Failed to generate embedding for %s" heading-text))))))))))
 
     (message "Chunk embedding generation complete: %d files processed, %d chunks total, %d processed, %d skipped"
              total-files total-chunks processed-chunks skipped-chunks)))
