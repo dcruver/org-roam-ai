@@ -119,6 +119,9 @@ sudo systemctl status org-roam-mcp
 ```bash
 # Remove all components installed by the standalone installer
 curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/uninstall-mcp.sh | bash
+
+# Or skip confirmation for automated scripts:
+curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/uninstall-mcp.sh | bash -s -- --yes
 ```
 
 **Option B: Manual installation**

@@ -15,6 +15,22 @@ VENV_DIR="$HOME/.org-roam-mcp"
 SERVICE_NAME="org-roam-mcp"
 EMACS_CONFIG_FILE="$HOME/.emacs.d/init-org-roam-mcp.el"
 
+# Parse command line arguments
+SKIP_CONFIRMATION=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --yes|-y)
+            SKIP_CONFIRMATION=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--yes|-y]"
+            exit 1
+            ;;
+    esac
+done
+
 echo -e "${RED}========================================${NC}"
 echo -e "${RED}org-roam-ai MCP Server Uninstallation${NC}"
 echo -e "${RED}========================================${NC}"
@@ -23,10 +39,25 @@ echo ""
 # Function to prompt for confirmation
 confirm() {
     local message="$1"
-    echo -e "${YELLOW}$message${NC}"
-    read -p "Continue? (y/N): " -n 1 -r
-    echo
-    [[ $REPLY =~ ^[Yy]$ ]]
+
+    # If confirmation is skipped, always return true
+    if [ "$SKIP_CONFIRMATION" = true ]; then
+        echo -e "${YELLOW}$message${NC}"
+        echo -e "${GREEN}Confirmation skipped (--yes flag used)${NC}"
+        return 0
+    fi
+
+    # Check if running interactively (stdin is a terminal)
+    if [ -t 0 ]; then
+        echo -e "${YELLOW}$message${NC}"
+        read -p "Continue? (y/N): " -n 1 -r
+        echo
+        [[ $REPLY =~ ^[Yy]$ ]]
+    else
+        echo -e "${YELLOW}$message${NC}"
+        echo -e "${YELLOW}Running non-interactively. Use --yes flag to skip confirmation.${NC}"
+        return 1  # Default to no when non-interactive
+    fi
 }
 
 # Function to stop and disable systemd service
@@ -143,7 +174,7 @@ main() {
     echo "  - MCP config from: ~/.emacs.d/init.el"
     echo ""
 
-    if ! confirm "Are you sure you want to proceed with uninstallation?"; then
+    if [ "$SKIP_CONFIRMATION" = false ] && ! confirm "Are you sure you want to proceed with uninstallation?"; then
         echo -e "${GREEN}Uninstallation cancelled.${NC}"
         exit 0
     fi
