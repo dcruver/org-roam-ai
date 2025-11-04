@@ -354,7 +354,9 @@ DOOM_EOF
     } >> "$DOOM_CONFIG_FILE"
 
     echo_success "Doom Emacs packages configured"
-else
+fi
+
+if ! ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) && ! ([ -d "$DOOM_CONFIG_DIR" ] && [ -f "$DOOM_BIN" ]); then
     # Standard Emacs configuration
     echo_info "Standard Emacs detected - configuring with straight.el"
 
