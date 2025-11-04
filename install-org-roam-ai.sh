@@ -315,37 +315,8 @@ if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFI
         DOOM_CONFIG_FILE="$DOOM_CONFIG_DIR/config.el"
     fi
 
-    # Create basic Doom config if it doesn't exist
-    if [ ! -f "$DOOM_CONFIG_FILE" ]; then
-        echo_info "Creating basic Doom config.el..."
-        cat > "$DOOM_CONFIG_FILE" << 'EOF'
-;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
-
-;; Place your private configuration here! Remember, you do not need to run 'doom
-;; sync' after modifying this file!
-
-;; org-roam-ai configuration
-EOF
-    fi
-
-    # Add Ollama configuration
-    echo_info "Adding org-roam-ai configuration..."
-    if [ "$OLLAMA_URL" != "http://localhost:11434" ]; then
-        echo "(customize-set-variable 'org-roam-semantic-ollama-url \"$OLLAMA_URL\")" >> "$DOOM_CONFIG_FILE"
-    fi
-    if [ "$OLLAMA_EMBEDDING_MODEL" != "nomic-embed-text" ]; then
-        echo "(customize-set-variable 'org-roam-semantic-embedding-model \"$OLLAMA_EMBEDDING_MODEL\")" >> "$DOOM_CONFIG_FILE"
-    fi
-    if [ "$OLLAMA_GENERATION_MODEL" != "llama3.1:8b" ]; then
-        echo "(customize-set-variable 'org-roam-semantic-generation-model \"$OLLAMA_GENERATION_MODEL\")" >> "$DOOM_CONFIG_FILE"
-    fi
-    if [ "$ENABLE_CHUNKING" = "true" ]; then
-        echo "(customize-set-variable 'org-roam-semantic-enable-chunking t)" >> "$DOOM_CONFIG_FILE"
-    fi
-    if [ "$MIN_CHUNK_SIZE" != "100" ]; then
-        echo "(customize-set-variable 'org-roam-semantic-min-chunk-size $MIN_CHUNK_SIZE)" >> "$DOOM_CONFIG_FILE"
-    fi
-
+    # Configure Ollama settings for org-roam-ai
+    echo_info "Configuring org-roam-ai for Doom Emacs..."
     echo_success "Doom Emacs packages configured"
 else
     echo_info "Standard Emacs detected - manual configuration required"
