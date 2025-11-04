@@ -184,28 +184,88 @@ echo_info "Found: ${EMACS_VERSION}"
 # Check if org-roam is installed
 echo_info "Checking for org-roam package..."
 
-# Try to check if org-roam is available in Emacs
-if emacs --batch --eval "(require 'org-roam)" 2>/dev/null; then
-    echo_success "org-roam is installed"
+# Check if Doom Emacs is being used
+DOOM_DIR="$HOME/.doom.d"
+DOOM_CONFIG_DIR="$HOME/.config/emacs"
+DOOM_BIN="$DOOM_CONFIG_DIR/bin/doom"
+
+if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFIG_DIR" ] && [ -f "$DOOM_BIN" ]); then
+    echo_info "Detected Doom Emacs configuration"
+
+    # Determine which Doom setup is being used
+    if [ -d "$DOOM_DIR" ]; then
+        PACKAGES_FILE="$DOOM_DIR/packages.el"
+        DOOM_CMD="doom"
+    else
+        PACKAGES_FILE="$DOOM_CONFIG_DIR/packages.el"
+        DOOM_CMD="$DOOM_BIN"
+    fi
+
+    # Check if org-roam is in Doom packages
+    if grep -q "org-roam" "$PACKAGES_FILE" 2>/dev/null; then
+        echo_success "org-roam found in Doom packages.el"
+
+        # Ensure Doom packages are synced
+        echo_info "Ensuring Doom packages are synced..."
+        if $DOOM_CMD sync; then
+            echo_success "Doom packages synced"
+        else
+            echo_warn "Doom sync failed, but continuing..."
+        fi
+    else
+        echo_error "org-roam not found in Doom packages.el"
+        echo_info "Please add org-roam to your $PACKAGES_FILE:"
+        echo_info "  (package! org-roam)"
+        echo_info "Then run: $DOOM_CMD sync"
+        exit 1
+    fi
 else
-    echo_error "org-roam is not installed in Emacs"
-    echo ""
-    echo_info "org-roam is a required prerequisite for org-roam-ai."
-    echo_info "Please install org-roam first:"
-    echo ""
-    echo_info "1. Ensure MELPA is in your package archives (~/.emacs.d/init.el):"
-    echo_info "   (require 'package)"
-    echo_info "   (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)"
-    echo ""
-    echo_info "2. Install org-roam in Emacs:"
-    echo_info "   M-x package-refresh-contents RET"
-    echo_info "   M-x package-install RET org-roam RET"
-    echo ""
-    echo_info "3. Configure org-roam (optional):"
-    echo_info "   M-x customize-group RET org-roam RET"
-    echo_info "   Set 'Org Roam Directory' to: ~/org-roam"
-    echo ""
-    exit 1
+    # Standard Emacs package check
+    echo_info "Using standard Emacs package management"
+
+    # Try to check if org-roam is available in Emacs
+    # Initialize package system first to ensure packages are loaded
+    if emacs --batch --eval "
+(progn
+  (require 'package)
+  (package-initialize)
+  (require 'org-roam)
+  (message \"org-roam loaded successfully\"))" 2>/dev/null; then
+        echo_success "org-roam is installed"
+    else
+        echo_info "org-roam not found, attempting automatic installation..."
+
+        # Install org-roam automatically
+        if emacs --batch --eval "
+(progn
+  (require 'package)
+  (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
+  (package-initialize)
+  (package-refresh-contents)
+  (package-install 'org-roam)
+  (message \"org-roam installed\"))" 2>/dev/null; then
+            echo_success "org-roam installed successfully"
+        else
+            echo_error "Failed to install org-roam automatically"
+            echo ""
+            echo_info "Please install org-roam manually. First ensure MELPA is added to your package archives:"
+            echo_info ""
+            echo_info "Add to your Emacs init file (~/.emacs.d/init.el):"
+            echo_info "  (require 'package)"
+            echo_info "  (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)"
+            echo_info ""
+            echo_info "Then install manually in Emacs:"
+            echo_info "  M-x package-refresh-contents RET"
+            echo_info "  M-x package-install RET org-roam RET"
+            echo ""
+            echo_info "Debug: Check which Emacs is being used:"
+            echo_info "  which emacs"
+            echo_info "  emacs --version"
+            echo_info "  Test org-roam manually: emacs --batch --eval \"(progn (require 'package) (package-initialize) (require 'org-roam) (message \\\"org-roam loaded\\\"))\""
+            echo ""
+            exit 1
+        fi
+    fi
 fi
 
     # Install org-roam
