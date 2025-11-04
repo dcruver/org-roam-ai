@@ -51,20 +51,17 @@ export OLLAMA_GENERATION_MODEL="${OLLAMA_GENERATION_MODEL:-llama3.1:8b}"        
 export ENABLE_CHUNKING="${ENABLE_CHUNKING:-false}"                          # Enable text chunking
 export MIN_CHUNK_SIZE="${MIN_CHUNK_SIZE:-100}"                             # Minimum chunk size
 
-# Clone repository if not already cloned
-if [ -d "${INSTALL_DIR}/.git" ]; then
-    echo_info "Repository already cloned, pulling latest..."
-    cd "${INSTALL_DIR}"
-    git pull
-else
-    echo_info "Cloning org-roam-ai repository..."
-    sudo mkdir -p "${INSTALL_DIR}"
-    sudo chown $USER:$USER "${INSTALL_DIR}"
-    git clone https://github.com/dcruver/org-roam-ai.git "${INSTALL_DIR}"
-fi
-
-cd "${INSTALL_DIR}"
-echo_success "Repository cloned/updated"
-
-# Run the local installation script
-bash "${INSTALL_DIR}/scripts/install-server.sh"
+# Run the installation script from GitHub with environment variables
+# We need to pass the environment variables to the downloaded script
+env -i \
+  INSTALL_DIR="$INSTALL_DIR" \
+  ORG_ROAM_PATH="$ORG_ROAM_PATH" \
+  OLLAMA_URL="$OLLAMA_URL" \
+  OLLAMA_EMBEDDING_MODEL="$OLLAMA_EMBEDDING_MODEL" \
+  OLLAMA_GENERATION_MODEL="$OLLAMA_GENERATION_MODEL" \
+  ENABLE_CHUNKING="$ENABLE_CHUNKING" \
+  MIN_CHUNK_SIZE="$MIN_CHUNK_SIZE" \
+  HOME="$HOME" \
+  USER="$USER" \
+  PATH="$PATH" \
+  bash -c 'curl -fsSL https://raw.githubusercontent.com/dcruver/org-roam-ai/main/scripts/install-server.sh | bash'
