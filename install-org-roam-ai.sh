@@ -418,7 +418,7 @@ fi
 echo_info "Step 7/7: Creating systemd services..."
 
 # MCP Service
-sudo tee /etc/systemd/system/org-roam-mcp.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/org-roam-mcp.service > /dev/null <<'EOF'
 [Unit]
 Description=org-roam MCP Server
 After=network.target
