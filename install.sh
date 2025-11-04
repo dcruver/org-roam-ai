@@ -73,7 +73,11 @@ install_mcp() {
     fi
 
     # Install from PyPI
-    pip3 install --user --upgrade org-roam-mcp
+    # Try --user first, fall back to --break-system-packages if needed
+    if ! pip3 install --user --upgrade org-roam-mcp 2>/dev/null; then
+        echo -e "${YELLOW}User install failed, trying system-wide install...${NC}"
+        pip3 install --upgrade --break-system-packages org-roam-mcp
+    fi
 
     if command -v org-roam-mcp >/dev/null 2>&1; then
         echo -e "${GREEN}✓ MCP server installed successfully${NC}"
