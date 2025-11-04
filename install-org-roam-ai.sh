@@ -390,32 +390,30 @@ DOOM_EOF
     fi
 
     # Add Ollama configuration to Doom config
-    {
-        if [ "$OLLAMA_URL" != "http://localhost:11434" ]; then
-            echo_info "Adding Ollama URL to Doom config: $OLLAMA_URL"
-            echo "(customize-set-variable 'org-roam-semantic-ollama-url \"$OLLAMA_URL\")"
-        fi
+    if [ "$OLLAMA_URL" != "http://localhost:11434" ] || [ "$OLLAMA_EMBEDDING_MODEL" != "nomic-embed-text" ] || [ "$OLLAMA_GENERATION_MODEL" != "llama3.1:8b" ] || [ "$ENABLE_CHUNKING" = "true" ] || [ "$MIN_CHUNK_SIZE" != "100" ]; then
+        echo_info "Adding org-roam-ai configuration to Doom config..."
+        {
+            if [ "$OLLAMA_URL" != "http://localhost:11434" ]; then
+                echo "(customize-set-variable 'org-roam-semantic-ollama-url \"$OLLAMA_URL\")"
+            fi
 
-        if [ "$OLLAMA_EMBEDDING_MODEL" != "nomic-embed-text" ]; then
-            echo_info "Adding embedding model to Doom config: $OLLAMA_EMBEDDING_MODEL"
-            echo "(customize-set-variable 'org-roam-semantic-embedding-model \"$OLLAMA_EMBEDDING_MODEL\")"
-        fi
+            if [ "$OLLAMA_EMBEDDING_MODEL" != "nomic-embed-text" ]; then
+                echo "(customize-set-variable 'org-roam-semantic-embedding-model \"$OLLAMA_EMBEDDING_MODEL\")"
+            fi
 
-        if [ "$OLLAMA_GENERATION_MODEL" != "llama3.1:8b" ]; then
-            echo_info "Adding generation model to Doom config: $OLLAMA_GENERATION_MODEL"
-            echo "(customize-set-variable 'org-roam-semantic-generation-model \"$OLLAMA_GENERATION_MODEL\")"
-        fi
+            if [ "$OLLAMA_GENERATION_MODEL" != "llama3.1:8b" ]; then
+                echo "(customize-set-variable 'org-roam-semantic-generation-model \"$OLLAMA_GENERATION_MODEL\")"
+            fi
 
-        if [ "$ENABLE_CHUNKING" = "true" ]; then
-            echo_info "Enabling text chunking in Doom config"
-            echo "(customize-set-variable 'org-roam-semantic-enable-chunking t)"
-        fi
+            if [ "$ENABLE_CHUNKING" = "true" ]; then
+                echo "(customize-set-variable 'org-roam-semantic-enable-chunking t)"
+            fi
 
-        if [ "$MIN_CHUNK_SIZE" != "100" ]; then
-            echo_info "Adding minimum chunk size to Doom config: $MIN_CHUNK_SIZE"
-            echo "(customize-set-variable 'org-roam-semantic-min-chunk-size $MIN_CHUNK_SIZE)"
-        fi
-    } >> "$DOOM_CONFIG_FILE"
+            if [ "$MIN_CHUNK_SIZE" != "100" ]; then
+                echo "(customize-set-variable 'org-roam-semantic-min-chunk-size $MIN_CHUNK_SIZE)"
+            fi
+        } >> "$DOOM_CONFIG_FILE"
+    fi
 
     echo_success "Doom Emacs packages configured"
 else
