@@ -11,9 +11,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration (matches install script)
-VENV_DIR="$HOME/.org-roam-mcp"
+INSTALL_DIR="${INSTALL_DIR:-/opt/org-roam-ai}"
+VENV_DIR="${INSTALL_DIR}/mcp/.venv"
 SERVICE_NAME="org-roam-mcp"
-EMACS_CONFIG_FILE="$HOME/.emacs.d/init-org-roam-mcp.el"
+EMACS_CONFIG_FILE="$HOME/.emacs.d/init-org-roam-ai.el"
 
 # Parse command line arguments
 SKIP_CONFIRMATION=false
@@ -110,6 +111,20 @@ remove_venv() {
     echo ""
 }
 
+# Function to remove installation directory
+remove_install_dir() {
+    echo -e "${YELLOW}Removing installation directory...${NC}"
+
+    if [ -d "$INSTALL_DIR" ]; then
+        sudo rm -rf "$INSTALL_DIR"
+        echo -e "${GREEN}✓ Installation directory removed${NC}"
+    else
+        echo -e "${YELLOW}⚠ Installation directory not found${NC}"
+    fi
+
+    echo ""
+}
+
 # Function to remove Emacs configuration
 remove_emacs_config() {
     echo -e "${YELLOW}Removing Emacs configuration...${NC}"
@@ -168,6 +183,7 @@ cleanup_artifacts() {
 main() {
     echo -e "${YELLOW}This will completely remove the org-roam-ai MCP server installation.${NC}"
     echo -e "${YELLOW}The following will be removed:${NC}"
+    echo "  - Installation directory: ${INSTALL_DIR}"
     echo "  - Systemd service: ${SERVICE_NAME}.service"
     echo "  - Virtual environment: ${VENV_DIR}"
     echo "  - Emacs config: ${EMACS_CONFIG_FILE}"
@@ -182,6 +198,7 @@ main() {
     stop_service
     remove_service_file
     remove_venv
+    remove_install_dir
     remove_emacs_config
     cleanup_artifacts
 
