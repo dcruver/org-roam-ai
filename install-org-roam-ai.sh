@@ -413,32 +413,9 @@ else
 fi
 
 # ============================================================================
-# 7. Create Systemd Services
+# 7. Summary
 # ============================================================================
-echo_info "Step 7/7: Creating systemd services..."
-
-# MCP Service
-sudo tee /etc/systemd/system/org-roam-mcp.service > /dev/null <<'EOF'
-[Unit]
-Description=org-roam MCP Server
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=${INSTALL_DIR}/mcp
-Environment="PATH=${MCP_VENV}/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="EMACS_SERVER_FILE=$HOME/emacs-server/server"
-ExecStart=${MCP_VENV}/bin/python -m org_roam_mcp.server
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-echo_success "Systemd services created"
+echo_info "Step 7/7: Installation complete!"
 
 # ============================================================================
 # Summary
@@ -456,26 +433,33 @@ fi
 echo ""
 echo_info "Next Steps:"
 echo ""
-echo "1. Configure Emacs with org-roam:"
-echo "   - Ensure org-roam is installed and configured"
-echo "   - Start Emacs server: emacs --daemon"
+echo "1. Start Emacs daemon:"
+echo "   emacs --daemon"
 echo ""
-echo "2. Start MCP service:"
+echo "2. Test org-roam-ai functionality in Emacs"
+echo ""
+echo "3. Optional: Create systemd service for MCP server:"
+echo "   sudo tee /etc/systemd/system/org-roam-mcp.service > /dev/null <<EOF"
+echo "   [Unit]"
+echo "   Description=org-roam MCP Server"
+echo "   After=network.target"
+echo "   "
+echo "   [Service]"
+echo "   Type=simple"
+echo "   User=\$USER"
+echo "   WorkingDirectory=${INSTALL_DIR}/mcp"
+echo "   Environment=\"PATH=${MCP_VENV}/bin:/usr/local/bin:/usr/bin:/bin\""
+echo "   Environment=\"EMACS_SERVER_FILE=\$HOME/emacs-server/server\""
+echo "   ExecStart=${MCP_VENV}/bin/python -m org_roam_mcp.server"
+echo "   Restart=on-failure"
+echo "   RestartSec=10"
+echo "   "
+echo "   [Install]"
+echo "   WantedBy=multi-user.target"
+echo "   EOF"
+echo "   sudo systemctl daemon-reload"
 echo "   sudo systemctl start org-roam-mcp"
-echo ""
-echo "3. Enable service at boot:"
 echo "   sudo systemctl enable org-roam-mcp"
 echo ""
-echo "4. Check status:"
-echo "   sudo systemctl status org-roam-mcp"
-echo "   journalctl -u org-roam-mcp -f"
-echo ""
-echo "5. Test MCP server:"
-echo "   curl http://localhost:8000"
-echo ""
-echo "6. Test Ollama:"
-echo "   ollama list"
-echo "   curl http://localhost:11434/api/tags"
-echo ""
-echo_warn "Note: Make sure Emacs daemon is running and org-roam is configured!"
+echo_warn "Note: Make sure Emacs daemon is running for full functionality!"
 echo ""
