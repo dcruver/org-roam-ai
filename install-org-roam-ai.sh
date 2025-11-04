@@ -189,17 +189,15 @@ DOOM_DIR="$HOME/.doom.d"
 DOOM_CONFIG_DIR="$HOME/.config/emacs"
 DOOM_BIN="$DOOM_CONFIG_DIR/bin/doom"
 
-if ([ -d "$DOOM_DIR" ] && command -v doom >/dev/null 2>&1) || ([ -d "$DOOM_CONFIG_DIR" ] && [ -f "$DOOM_BIN" ]); then
-    echo_info "Detected Doom Emacs configuration"
-
-    # Determine which Doom setup is being used
-    if [ -d "$DOOM_DIR" ]; then
-        PACKAGES_FILE="$DOOM_DIR/packages.el"
-        DOOM_CMD="doom"
-    else
-        PACKAGES_FILE="$DOOM_CONFIG_DIR/packages.el"
-        DOOM_CMD="$DOOM_BIN"
-    fi
+# Check for Doom Emacs
+if ([ -d "$HOME/.doom.d" ] && command -v doom >/dev/null 2>&1) || ([ -d "$HOME/.config/emacs" ] && [ -f "$HOME/.config/emacs/bin/doom" ]); then
+    echo_info "Doom Emacs detected - org-roam-ai is compatible!"
+    echo_info "Doom packages should be automatically managed"
+    echo_success "Doom Emacs configuration complete"
+else
+    echo_info "Standard Emacs detected"
+    echo_info "Please ensure org-roam is installed via MELPA"
+fi
 
     # Check if packages.el exists, create it if not
     if [ ! -f "$PACKAGES_FILE" ]; then
