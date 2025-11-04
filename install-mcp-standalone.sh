@@ -105,8 +105,8 @@ install_mcp() {
 
     source "$VENV_DIR/bin/activate"
 
-    # Install from PyPI
-    pip install --upgrade org-roam-mcp
+    # Install from PyPI (use virtual environment pip)
+    "$VENV_DIR/bin/pip" install --upgrade org-roam-mcp
 
     if command -v org-roam-mcp >/dev/null 2>&1; then
         echo -e "${GREEN}✓ MCP server installed successfully${NC}"
