@@ -13,7 +13,6 @@ NC='\033[0m' # No Color
 # Configuration
 VENV_DIR="$HOME/.org-roam-mcp"
 SERVICE_NAME="org-roam-mcp"
-GITEA_URL="https://gitea-backend.cruver.network/dcruver/org-roam-ai"
 
 # Detect if running in a container
 IS_CONTAINER=0

@@ -51,10 +51,6 @@ export OLLAMA_GENERATION_MODEL="${OLLAMA_GENERATION_MODEL:-llama3.1:8b}"        
 export ENABLE_CHUNKING="${ENABLE_CHUNKING:-false}"                          # Enable text chunking
 export MIN_CHUNK_SIZE="${MIN_CHUNK_SIZE:-100}"                             # Minimum chunk size
 
-# Configuration
-GITEA_TOKEN="${GITEA_TOKEN:-}"
-GITEA_USER="dcruver"
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
