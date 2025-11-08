@@ -15,6 +15,12 @@ VENV_DIR="$HOME/.org-roam-mcp"
 SERVICE_NAME="org-roam-mcp"
 GITEA_URL="https://gitea-backend.cruver.network/dcruver/org-roam-ai"
 
+# Detect if running in a container
+IS_CONTAINER=0
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+    IS_CONTAINER=1
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}org-roam-ai MCP Server Installation${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -70,6 +76,25 @@ check_prerequisites() {
         echo "  The MCP server will start it automatically"
     else
         echo -e "${GREEN}✓ Emacs server running${NC}"
+    fi
+
+    # Check if org-roam is configured
+    if emacsclient --eval '(boundp (quote org-roam-directory))' 2>/dev/null | grep -q 't'; then
+        echo -e "${GREEN}✓ org-roam-directory is configured${NC}"
+    else
+        echo -e "${YELLOW}⚠ org-roam-directory not configured${NC}"
+        echo "  Please configure org-roam before running the MCP server"
+        echo "  The server will still install, but you'll need to configure org-roam"
+        echo "  before using the MCP server functionality"
+    fi
+
+    # Check if org-roam package is loaded
+    if emacsclient --eval '(featurep (quote org-roam))' 2>/dev/null | grep -q 't'; then
+        echo -e "${GREEN}✓ org-roam package is loaded${NC}"
+    else
+        echo -e "${YELLOW}⚠ org-roam package not loaded${NC}"
+        echo "  Please ensure org-roam is installed and loaded in Emacs"
+        echo "  You can install it from MELPA or configure it in your init.el"
     fi
 
     if [ $missing -eq 1 ]; then
@@ -228,7 +253,22 @@ EOF
 
 # Function to create systemd service
 create_service() {
+    if [ $IS_CONTAINER -eq 1 ]; then
+        echo -e "${YELLOW}⚠ Running in container - skipping systemd service creation${NC}"
+        echo ""
+        return 0
+    fi
+
     echo -e "${YELLOW}Creating systemd service...${NC}"
+
+    # Check if systemctl is available
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ systemctl not found - skipping service creation${NC}"
+        echo -e "${YELLOW}  You can run the MCP server manually:${NC}"
+        echo -e "${YELLOW}  $VENV_DIR/bin/org-roam-mcp${NC}"
+        echo ""
+        return 0
+    fi
 
     sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
@@ -257,6 +297,19 @@ EOF
 
 # Function to enable service
 enable_service() {
+    if [ $IS_CONTAINER -eq 1 ]; then
+        echo -e "${YELLOW}⚠ Running in container - skipping systemd service enablement${NC}"
+        echo ""
+        return 0
+    fi
+
+    # Check if systemctl is available
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ systemctl not found - skipping service enablement${NC}"
+        echo ""
+        return 0
+    fi
+
     echo -e "${YELLOW}Enabling systemd service...${NC}"
 
     sudo systemctl daemon-reload
@@ -281,19 +334,35 @@ main() {
     echo ""
     echo -e "${YELLOW}Next steps:${NC}"
     echo ""
-    echo "1. Start the service:"
-    echo "   sudo systemctl start ${SERVICE_NAME}.service"
-    echo ""
-    echo "2. Check service status:"
-    echo "   sudo systemctl status ${SERVICE_NAME}.service"
-    echo ""
-    echo "3. View logs:"
-    echo "   sudo journalctl -u ${SERVICE_NAME}.service -f"
+
+    if [ $IS_CONTAINER -eq 1 ]; then
+        echo -e "${YELLOW}Running in container environment:${NC}"
+        echo ""
+        echo "1. Run the MCP server manually:"
+        echo "   $VENV_DIR/bin/org-roam-mcp"
+        echo ""
+        echo "2. Or run in background:"
+        echo "   nohup $VENV_DIR/bin/org-roam-mcp > /tmp/mcp.log 2>&1 &"
+        echo ""
+        echo -e "${YELLOW}Note: systemd is not available in containers${NC}"
+    else
+        echo "1. Start the service:"
+        echo "   sudo systemctl start ${SERVICE_NAME}.service"
+        echo ""
+        echo "2. Check service status:"
+        echo "   sudo systemctl status ${SERVICE_NAME}.service"
+        echo ""
+        echo "3. View logs:"
+        echo "   sudo journalctl -u ${SERVICE_NAME}.service -f"
+    fi
+
     echo ""
     echo -e "${YELLOW}Configuration:${NC}"
     echo "  MCP Server: http://localhost:8000"
     echo "  Virtual Environment: ${VENV_DIR}"
-    echo "  Service: ${SERVICE_NAME}.service"
+    if [ $IS_CONTAINER -eq 0 ]; then
+        echo "  Service: ${SERVICE_NAME}.service"
+    fi
     echo ""
     echo -e "${GREEN}The MCP server will automatically install required Emacs packages on first run!${NC}"
     echo ""

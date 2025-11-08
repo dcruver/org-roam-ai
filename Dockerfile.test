@@ -1,0 +1,48 @@
+FROM ubuntu:22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    emacs-nox \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    git \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create test user with sudo privileges
+RUN useradd -m -s /bin/bash testuser && \
+    echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Switch to test user
+USER testuser
+WORKDIR /home/testuser
+
+# Install straight.el and org-roam in a single step
+RUN emacs --batch --eval "(progn \
+  (defvar bootstrap-version) \
+  (let ((bootstrap-file \
+         (expand-file-name \"straight/repos/straight.el/bootstrap.el\" user-emacs-directory)) \
+        (bootstrap-version 5)) \
+    (unless (file-exists-p bootstrap-file) \
+      (with-current-buffer \
+          (url-retrieve-synchronously \
+           \"https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el\" \
+           'silent 'inhibit-cookies) \
+        (goto-char (point-max)) \
+        (eval-print-last-sexp))) \
+    (load bootstrap-file nil 'nomessage) \
+    (straight-use-package 'org-roam)))"
+
+# Configure org-roam with a basic directory
+RUN mkdir -p /home/testuser/org-roam && \
+    echo '(setq org-roam-directory "~/org-roam")' >> ~/.emacs.d/init.el && \
+    echo '(require (quote org-roam))' >> ~/.emacs.d/init.el && \
+    echo '(org-roam-db-autosync-mode)' >> ~/.emacs.d/init.el
+
+# Start Emacs server on container start
+CMD ["/bin/bash"]
