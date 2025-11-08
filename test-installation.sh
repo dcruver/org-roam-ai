@@ -233,8 +233,11 @@ test_systemd_service() {
             exit 1
         fi
 
-        # Check service is enabled (skip in containers where systemctl doesn't work)
-        if command -v systemctl >/dev/null 2>&1; then
+        # Check service is enabled (skip in containers where systemd doesn't work)
+        # Detect if running in a container
+        if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+            echo "Running in container - skipping service enablement check"
+        elif command -v systemctl >/dev/null 2>&1; then
             if ! systemctl is-enabled org-roam-mcp.service >/dev/null 2>&1; then
                 echo "ERROR: Service not enabled"
                 exit 1
