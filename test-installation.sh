@@ -233,7 +233,7 @@ test_systemd_service() {
             exit 1
         fi
 
-        # Check service is enabled (skip in containers where systemd doesn't work)
+        # Check service is enabled (skip in containers where systemd doesn''t work)
         # Detect if running in a container
         if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
             echo "Running in container - skipping service enablement check"
