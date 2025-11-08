@@ -15,6 +15,12 @@ VENV_DIR="$HOME/.org-roam-mcp"
 SERVICE_NAME="org-roam-mcp"
 EMACS_CONFIG_FILE="$HOME/.emacs.d/init-org-roam-mcp.el"
 
+# Detect if running in a container
+IS_CONTAINER=0
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+    IS_CONTAINER=1
+fi
+
 # Parse command line arguments
 SKIP_CONFIRMATION=false
 while [[ $# -gt 0 ]]; do
@@ -64,6 +70,19 @@ confirm() {
 stop_service() {
     echo -e "${YELLOW}Stopping and disabling systemd service...${NC}"
 
+    # Skip systemctl operations if in container or systemctl not available
+    if [ $IS_CONTAINER -eq 1 ] || ! command -v systemctl >/dev/null 2>&1; then
+        if [ $IS_CONTAINER -eq 1 ]; then
+            echo -e "${YELLOW}⚠ Running in container - skipping systemctl operations${NC}"
+        else
+            echo -e "${YELLOW}⚠ systemctl not available - skipping service operations${NC}"
+        fi
+        echo -e "${YELLOW}⚠ Service not running${NC}"
+        echo -e "${YELLOW}⚠ Service not enabled${NC}"
+        echo ""
+        return 0
+    fi
+
     if systemctl is-active --quiet ${SERVICE_NAME}.service 2>/dev/null; then
         sudo systemctl stop ${SERVICE_NAME}.service
         echo -e "${GREEN}✓ Service stopped${NC}"
@@ -87,7 +106,10 @@ remove_service_file() {
 
     if [ -f /etc/systemd/system/${SERVICE_NAME}.service ]; then
         sudo rm /etc/systemd/system/${SERVICE_NAME}.service
-        sudo systemctl daemon-reload
+        # Only reload daemon if not in container and systemctl is available
+        if [ $IS_CONTAINER -eq 0 ] && command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl daemon-reload
+        fi
         echo -e "${GREEN}✓ Service file removed${NC}"
     else
         echo -e "${YELLOW}⚠ Service file not found${NC}"
