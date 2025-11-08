@@ -232,13 +232,18 @@ test_systemd_service() {
             echo "ERROR: Service file has incorrect path"
             exit 1
         fi
-        
-        # Check service is enabled
-        if ! systemctl is-enabled org-roam-mcp.service >/dev/null 2>&1; then
-            echo "ERROR: Service not enabled"
-            exit 1
+
+        # Check service is enabled (skip in containers where systemctl doesn't work)
+        if command -v systemctl >/dev/null 2>&1; then
+            if ! systemctl is-enabled org-roam-mcp.service >/dev/null 2>&1; then
+                echo "ERROR: Service not enabled"
+                exit 1
+            fi
+            echo "Service is enabled"
+        else
+            echo "Skipping service enablement check (systemctl not available)"
         fi
-        
+
         echo "Service configuration verified!"
     '
     
