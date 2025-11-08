@@ -252,23 +252,9 @@ EOF
 
 # Function to create systemd service
 create_service() {
-    if [ $IS_CONTAINER -eq 1 ]; then
-        echo -e "${YELLOW}⚠ Running in container - skipping systemd service creation${NC}"
-        echo ""
-        return 0
-    fi
-
     echo -e "${YELLOW}Creating systemd service...${NC}"
 
-    # Check if systemctl is available
-    if ! command -v systemctl >/dev/null 2>&1; then
-        echo -e "${YELLOW}⚠ systemctl not found - skipping service creation${NC}"
-        echo -e "${YELLOW}  You can run the MCP server manually:${NC}"
-        echo -e "${YELLOW}  $VENV_DIR/bin/org-roam-mcp${NC}"
-        echo ""
-        return 0
-    fi
-
+    # Create service file regardless of container status (useful as reference)
     sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=Org-roam MCP Server
@@ -291,6 +277,14 @@ WantedBy=multi-user.target
 EOF
 
     echo -e "${GREEN}✓ Created ${SERVICE_NAME}.service${NC}"
+
+    # Only reload daemon if not in container and systemctl is available
+    if [ $IS_CONTAINER -eq 0 ] && command -v systemctl >/dev/null 2>&1; then
+        sudo systemctl daemon-reload
+    elif [ $IS_CONTAINER -eq 1 ]; then
+        echo -e "${YELLOW}⚠ Running in container - service file created but not loaded${NC}"
+    fi
+
     echo ""
 }
 
