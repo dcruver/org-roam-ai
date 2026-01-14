@@ -32,8 +32,8 @@ class EmacsClient:
                 self.server_file = env_server_file
                 logger.info(f"Using EMACS_SERVER_FILE environment variable: {self.server_file}")
             else:
-                self.server_file = os.path.expanduser("~/emacs-server/server")
-                logger.info(f"Using default HOME-based path: {self.server_file}")
+                self.server_file = os.path.expanduser("~/.emacs.d/server/server")
+                logger.info(f"Using default Emacs server path: {self.server_file}")
         
         self.timeout = 30  # seconds
         
@@ -58,7 +58,7 @@ class EmacsClient:
             # Check if packages are loaded
             packages_to_check = [
                 'org-roam-vector-search',
-                'org-roam-ai-assistant',
+                'org-roam-second-brain',
                 'org-roam-api'
             ]
 
@@ -186,17 +186,46 @@ class EmacsClient:
         Raises:
             json.JSONDecodeError: If parsing fails even after fixing
         """
-        # Simple approach: replace literal control characters with their escape sequences
-        # This works because json-encode in elisp escapes SOME things but not others
-        cleaned = json_str.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-
-        # Also escape other control characters
+        # Escape ALL control characters in one pass for efficiency
+        # This handles: 0-31 (ASCII control), 127 (DEL), and 128-159 (C1 control codes)
         result = []
-        for char in cleaned:
-            if ord(char) < 32 and char not in '\n\r\t':  # Already replaced above
-                result.append(f'\\u{ord(char):04x}')
+        i = 0
+        while i < len(json_str):
+            char = json_str[i]
+            code = ord(char)
+
+            # Check if this is an already-escaped sequence (backslash followed by valid escape char)
+            if char == '\\' and i + 1 < len(json_str):
+                next_char = json_str[i + 1]
+                # Valid JSON escape sequences: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+                if next_char in '"\\bfnrt/':
+                    result.append(char)
+                    result.append(next_char)
+                    i += 2
+                    continue
+                elif next_char == 'u' and i + 5 < len(json_str):
+                    # \uXXXX escape - keep as-is
+                    result.append(json_str[i:i+6])
+                    i += 6
+                    continue
+
+            # Escape unescaped control characters
+            if code < 32:  # ASCII control characters
+                if code == 9:  # tab
+                    result.append('\\t')
+                elif code == 10:  # newline
+                    result.append('\\n')
+                elif code == 13:  # carriage return
+                    result.append('\\r')
+                else:
+                    result.append(f'\\u{code:04x}')
+            elif code == 127:  # DEL
+                result.append('\\u007f')
+            elif 128 <= code <= 159:  # C1 control codes
+                result.append(f'\\u{code:04x}')
             else:
                 result.append(char)
+            i += 1
 
         cleaned = ''.join(result)
         return json.loads(cleaned)
@@ -446,15 +475,26 @@ class EmacsClient:
         
         expression = (f'(my/add-daily-entry-structured "{self._escape_for_elisp(timestamp)}" '
                      f'"{self._escape_for_elisp(formatted_title)}" {points_list} {steps_list} {tags_list})')
-        
-        # This function returns nil on success, so we handle it specially
+
+        # This function returns a plain string message, not JSON
+        # Use _execute_command directly instead of eval_elisp
+        safe_expression = (expression
+                          .replace("\\", "\\\\")
+                          .replace('"', '\\"')
+                          .replace('`', '\\`')
+                          .replace('$', '\\$'))
+
+        if os.path.exists(self.server_file):
+            command = f'emacsclient --server-file={self.server_file} -e "{safe_expression}"'
+        else:
+            command = f'emacsclient -e "{safe_expression}"'
+
         try:
-            self.eval_elisp(expression)
-            return {"success": True, "message": "Daily entry added successfully"}
+            response = self._execute_command(command)
+            # Response is a quoted string like "Added journal entry..."
+            return {"success": True, "message": response.strip().strip('"')}
         except EmacsClientError as e:
-            if "nil" in str(e).lower():
-                return {"success": True, "message": "Daily entry added successfully"}
-            raise
+            return {"success": False, "error": str(e)}
     
     def get_daily_content(self, date: Optional[str] = None) -> Dict[str, Any]:
         """Get content of daily note.
@@ -565,6 +605,42 @@ class EmacsClient:
             }
 
 
+    def add_inbox_entry(
+        self,
+        command: str,
+        original_text: str,
+        linked_note_id: Optional[str] = None,
+        linked_note_title: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Add an inbox entry to today's daily note for audit trail.
+
+        Args:
+            command: The command used (e.g., 'journal', 'note', 'yt')
+            original_text: The full original message including the command
+            linked_note_id: Optional ID of a note that was created
+            linked_note_title: Optional title of a note that was created
+
+        Returns:
+            Result with success status
+        """
+        # Build the elisp call
+        if linked_note_id and linked_note_title:
+            expression = (
+                f'(my/api-add-inbox-entry '
+                f'"{self._escape_for_elisp(command)}" '
+                f'"{self._escape_for_elisp(original_text)}" '
+                f'"{self._escape_for_elisp(linked_note_id)}" '
+                f'"{self._escape_for_elisp(linked_note_title)}")'
+            )
+        else:
+            expression = (
+                f'(my/api-add-inbox-entry '
+                f'"{self._escape_for_elisp(command)}" '
+                f'"{self._escape_for_elisp(original_text)}")'
+            )
+
+        return self.eval_elisp(expression)
+
     def sync_database(self, force: bool = True) -> Dict[str, Any]:
         """Sync org-roam database.
 
@@ -585,3 +661,225 @@ class EmacsClient:
                 return {"success": True, "message": "Database synced successfully"}
             logger.error(f"Database sync failed: {e}")
             return {"success": False, "error": str(e)}
+
+    # =========================================================================
+    # Structured Node Types (Phase 2)
+    # =========================================================================
+
+    def create_person(
+        self,
+        name: str,
+        context: Optional[str] = None,
+        follow_ups: Optional[List[str]] = None,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create a person node with structured fields.
+
+        Args:
+            name: Person's name
+            context: How you know them, their role
+            follow_ups: List of action items related to this person
+            notes: Additional notes about this person
+
+        Returns:
+            Creation result with note details
+        """
+        # Build the elisp call with optional parameters
+        params = [f'"{self._escape_for_elisp(name)}"']
+
+        if context:
+            params.append(f'"{self._escape_for_elisp(context)}"')
+        else:
+            params.append('nil')
+
+        if follow_ups:
+            params.append(self._build_elisp_list(follow_ups))
+        else:
+            params.append('nil')
+
+        if notes:
+            params.append(f'"{self._escape_for_elisp(notes)}"')
+        else:
+            params.append('nil')
+
+        expression = f'(my/api-create-person {" ".join(params)})'
+        return self.eval_elisp(expression)
+
+    def create_project(
+        self,
+        title: str,
+        status: Optional[str] = None,
+        next_action: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create a project node with structured fields.
+
+        Args:
+            title: Project name
+            status: Project status (active, waiting, blocked, someday, done)
+            next_action: Next actionable step
+            notes: Additional notes about this project
+
+        Returns:
+            Creation result with note details
+        """
+        params = [f'"{self._escape_for_elisp(title)}"']
+
+        if status:
+            params.append(f'"{self._escape_for_elisp(status)}"')
+        else:
+            params.append('nil')
+
+        if next_action:
+            params.append(f'"{self._escape_for_elisp(next_action)}"')
+        else:
+            params.append('nil')
+
+        if notes:
+            params.append(f'"{self._escape_for_elisp(notes)}"')
+        else:
+            params.append('nil')
+
+        expression = f'(my/api-create-project {" ".join(params)})'
+        return self.eval_elisp(expression)
+
+    def create_idea(
+        self,
+        title: str,
+        one_liner: str,
+        elaboration: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create an idea node with structured fields.
+
+        Args:
+            title: Idea title
+            one_liner: Brief summary of the insight
+            elaboration: Detailed explanation (optional)
+
+        Returns:
+            Creation result with note details
+        """
+        params = [
+            f'"{self._escape_for_elisp(title)}"',
+            f'"{self._escape_for_elisp(one_liner)}"'
+        ]
+
+        if elaboration:
+            params.append(f'"{self._escape_for_elisp(elaboration)}"')
+        else:
+            params.append('nil')
+
+        expression = f'(my/api-create-idea {" ".join(params)})'
+        return self.eval_elisp(expression)
+
+    def create_admin(
+        self,
+        title: str,
+        due_date: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create an admin task node with structured fields.
+
+        Args:
+            title: Task title
+            due_date: Due date in YYYY-MM-DD format
+            notes: Additional notes about this task
+
+        Returns:
+            Creation result with note details
+        """
+        params = [f'"{self._escape_for_elisp(title)}"']
+
+        if due_date:
+            params.append(f'"{self._escape_for_elisp(due_date)}"')
+        else:
+            params.append('nil')
+
+        if notes:
+            params.append(f'"{self._escape_for_elisp(notes)}"')
+        else:
+            params.append('nil')
+
+        expression = f'(my/api-create-admin {" ".join(params)})'
+        return self.eval_elisp(expression)
+
+    # =========================================================================
+    # Proactive Surfacing (Phase 3)
+    # =========================================================================
+
+    def get_active_projects(self) -> Dict[str, Any]:
+        """Get all active projects with their next actions.
+
+        Returns:
+            Active projects ordered by last modified date
+        """
+        expression = '(my/api-get-active-projects)'
+        return self.eval_elisp(expression)
+
+    def get_pending_followups(self) -> Dict[str, Any]:
+        """Get all people with pending follow-up items.
+
+        Returns:
+            People with unchecked follow-ups, sorted by count
+        """
+        expression = '(my/api-get-pending-followups)'
+        return self.eval_elisp(expression)
+
+    def get_stale_projects(self, days_threshold: int = 5) -> Dict[str, Any]:
+        """Get projects with no activity in X days.
+
+        Args:
+            days_threshold: Number of days of inactivity to consider stale
+
+        Returns:
+            Stale projects sorted by days since last modified
+        """
+        expression = f'(my/api-get-stale-projects {days_threshold})'
+        return self.eval_elisp(expression)
+
+    def get_weekly_inbox(self, days: int = 7) -> Dict[str, Any]:
+        """Get inbox entries from the past N days.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            Inbox entries grouped by day
+        """
+        expression = f'(my/api-get-weekly-inbox {days})'
+        return self.eval_elisp(expression)
+
+    def get_digest_data(self) -> Dict[str, Any]:
+        """Get all data needed for daily digest in a single call.
+
+        Combines active projects, pending follow-ups, and stale projects
+        for efficient digest generation.
+
+        Returns:
+            Combined digest data
+        """
+        expression = '(my/api-get-digest-data)'
+        return self.eval_elisp(expression)
+
+    def log_to_inbox(self, text: str) -> Dict[str, Any]:
+        """Log text to inbox and auto-create person nodes for [[Name]] links.
+
+        Args:
+            text: Text to log, may contain [[Name]] backlinks
+
+        Returns:
+            Result with success status and list of created person nodes
+        """
+        expression = f'(my/api-log-to-inbox "{self._escape_for_elisp(text)}")'
+        return self.eval_elisp(expression)
+
+    def get_dangling_followups(self) -> Dict[str, Any]:
+        """Find unchecked items with [[Name]] links where the person doesn't exist.
+
+        Scans all org files for follow-ups mentioning untracked people.
+
+        Returns:
+            List of untracked people with their follow-up items
+        """
+        expression = '(my/api-get-dangling-followups)'
+        return self.eval_elisp(expression)

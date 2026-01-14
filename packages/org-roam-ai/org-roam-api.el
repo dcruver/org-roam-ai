@@ -17,6 +17,7 @@
 
 (require 'org-roam)
 (require 'json)
+(require 'subr-x)
 
 ;;; ============================================================================
 ;;; HELPER FUNCTIONS
@@ -73,6 +74,26 @@
             props))
       (error '()))))
 
+(defun my/api--generate-and-save-embedding (file-path)
+  "Generate embedding for FILE-PATH and save the buffer.
+This is a helper function to ensure embeddings are persisted to disk."
+  (condition-case err
+      (when (fboundp 'org-roam-semantic-generate-embedding)
+        (message "Generating embedding for: %s" (file-name-nondirectory file-path))
+        (org-roam-semantic-generate-embedding file-path)
+        ;; Save the buffer after embedding is stored
+        (let ((buf (find-buffer-visiting file-path)))
+          (when buf
+            (with-current-buffer buf
+              (save-buffer)
+              (kill-buffer))))
+        t)
+    (error
+     (message "Warning: Failed to generate embeddings for %s: %s"
+              (file-name-nondirectory file-path)
+              (error-message-string err))
+     nil)))
+
 ;;; ============================================================================
 ;;; BASIC NOTE CREATION AND SEARCH
 ;;; ============================================================================
@@ -100,14 +121,7 @@
     (org-roam-db-sync)
 
     ;; Generate embeddings if org-roam-semantic is available
-    (condition-case err
-        (when (fboundp 'org-roam-semantic-generate-chunks-for-file)
-          (message "Generating chunk embeddings for new note: %s" (file-name-nondirectory file-path))
-          (org-roam-semantic-generate-chunks-for-file file-path))
-      (error
-       (message "Warning: Failed to generate embeddings for %s: %s"
-                (file-name-nondirectory file-path)
-                (error-message-string err))))
+    (my/api--generate-and-save-embedding file-path)
 
     (let ((node (org-roam-node-from-id id)))
       (json-encode
@@ -154,7 +168,7 @@ Returns semantically similar notes with full content for RAG applications."
       (if (fboundp 'org-roam-semantic-get-similar-data)
           (let* ((limit (or limit 10))
                  (cutoff (or cutoff 0.55))
-                 (similarities (org-roam-semantic-get-similar-data query limit nil cutoff))
+                 (similarities (org-roam-semantic-get-similar-data query limit cutoff))
                  (enriched-results
                   (mapcar (lambda (result)
                             (let* ((file (car result))
@@ -506,12 +520,16 @@ Returns semantically similar notes with full content for RAG applications."
                   ;; Sync database so final note is immediately available
                   (org-roam-db-sync)
 
+                  ;; Generate embeddings if org-roam-semantic is available
+                  (my/api--generate-and-save-embedding file-path)
+
                   (my/api--json-response
                    `((success . t)
                      (action . "draft_finalized")
                      (room_id . ,room-id)
                      (final_note_id . ,final-id)
                      (final_note_title . ,final-title)
+                     (embedding_generated . ,(and (fboundp 'org-roam-semantic-generate-embedding) t))
                      (message . ,(format "Draft saved as \"%s\"" final-title)))))))
           (error
            (my/api--json-response
@@ -616,6 +634,683 @@ TYPE: 'journal' or 'todo'"
           (insert-file-contents daily-file)
           (buffer-string))
       "")))
+
+;;; ============================================================================
+;;; INBOX LOGGING (Audit Trail)
+;;; ============================================================================
+
+(defun my/api-add-inbox-entry (command original-text &optional linked-note-id linked-note-title)
+  "Add an inbox entry to today's daily note for audit trail.
+COMMAND is the command used (e.g., 'journal', 'note', 'yt').
+ORIGINAL-TEXT is the full original message including the command.
+LINKED-NOTE-ID and LINKED-NOTE-TITLE are optional if a note was created."
+  (let* ((today (format-time-string "%Y-%m-%d"))
+         (daily-file (expand-file-name (concat today ".org")
+                                      (expand-file-name "daily" org-roam-directory)))
+         (timestamp (format-time-string "[%Y-%m-%d %a %H:%M]"))
+         (link-text (if (and linked-note-id linked-note-title)
+                       (format "[[id:%s][%s]]" linked-note-id linked-note-title)
+                     (cond
+                      ((string= command "journal") "daily entry added")
+                      ((string= command "search") "search performed")
+                      ((string= command "help") "help shown")
+                      (t "processed")))))
+
+    ;; Ensure daily directory exists
+    (unless (file-exists-p (file-name-directory daily-file))
+      (make-directory (file-name-directory daily-file) t))
+
+    ;; Create daily file if it doesn't exist
+    (unless (file-exists-p daily-file)
+      (with-temp-file daily-file
+        (insert (format "#+title: %s\n#+filetags: :daily:\n\n" today))))
+
+    (with-current-buffer (find-file-noselect daily-file)
+      ;; Find or create Inbox section
+      (goto-char (point-min))
+      (let ((inbox-pos (re-search-forward "^\\* Inbox$" nil t)))
+        (if inbox-pos
+            ;; Found Inbox section - go to after the heading
+            (progn
+              (forward-line 1)
+              ;; Skip any existing entries to add at the end of Inbox section
+              (while (and (not (eobp))
+                         (or (looking-at "^\\*\\* ")
+                             (looking-at "^   ")
+                             (looking-at "^$")))
+                (forward-line 1))
+              ;; Back up to before the next section or end
+              (when (looking-at "^\\* ")
+                (forward-line -1)
+                (end-of-line)
+                (insert "\n")))
+          ;; No Inbox section - create one at the end
+          (goto-char (point-max))
+          (unless (bolp) (insert "\n"))
+          (insert "* Inbox\n")))
+
+      ;; Insert the inbox entry
+      (insert (format "** DONE /%s → %s\n" command link-text))
+      (insert "   :PROPERTIES:\n")
+      (insert (format "   :CAPTURED: %s\n" timestamp))
+      (insert (format "   :COMMAND: %s\n" command))
+      (insert (format "   :ORIGINAL: %s\n" original-text))
+      (when linked-note-id
+        (insert (format "   :LINKED-ID: %s\n" linked-note-id)))
+      (insert "   :END:\n")
+
+      (save-buffer))
+
+    (my/api--json-response
+     `((success . t)
+       (message . "Inbox entry added")
+       (command . ,command)
+       (timestamp . ,timestamp)
+       (linked_note_id . ,linked-note-id)
+       (linked_note_title . ,linked-note-title)))))
+
+;;; ============================================================================
+;;; STRUCTURED NODE TYPES (Phase 2)
+;;; ============================================================================
+
+(defun my/api--create-subdirectory (subdir)
+  "Ensure SUBDIR exists under org-roam-directory."
+  (let ((dir (expand-file-name subdir org-roam-directory)))
+    (unless (file-exists-p dir)
+      (make-directory dir t))
+    dir))
+
+(defun my/api--create-structured-file (title id subdir)
+  "Create org file path for TITLE with ID in SUBDIR."
+  (let* ((dir (my/api--create-subdirectory subdir))
+         (filename (format "%s-%s.org"
+                          (downcase (replace-regexp-in-string "[^a-zA-Z0-9]+" "-" title))
+                          id)))
+    (expand-file-name filename dir)))
+
+(defun my/api-create-person (name &optional context follow-ups notes)
+  "Create a person node with structured fields.
+NAME is the person's name.
+CONTEXT is optional context about how you know them.
+FOLLOW-UPS is an optional list of action items.
+NOTES is optional additional notes."
+  (my/api--ensure-org-roam-db)
+  (let* ((id (my/api--generate-id))
+         (file-path (my/api--create-structured-file name id "people"))
+         (timestamp (format-time-string "[%Y-%m-%d %a]")))
+
+    (with-current-buffer (find-file-noselect file-path)
+      (org-mode)
+      (erase-buffer)
+      (insert ":PROPERTIES:\n")
+      (insert (format ":ID: %s\n" id))
+      (insert ":NODE-TYPE: person\n")
+      (when context
+        (insert (format ":CONTEXT: %s\n" context)))
+      (insert (format ":LAST-CONTACT: %s\n" timestamp))
+      (insert ":END:\n")
+      (insert (format "#+title: %s\n\n" name))
+
+      ;; Follow-ups section
+      (insert "* Follow-ups\n")
+      (if follow-ups
+          (dolist (item follow-ups)
+            (insert (format "- [ ] %s\n" item)))
+        (insert "\n"))
+
+      ;; Notes section
+      (insert "\n* Notes\n")
+      (when notes
+        (insert (format "%s\n" notes)))
+
+      (save-buffer)
+      (kill-buffer (current-buffer)))
+
+    (org-roam-db-sync)
+
+    ;; Generate embeddings if available
+    (my/api--generate-and-save-embedding file-path)
+
+    (let ((node (org-roam-node-from-id id)))
+      (json-encode
+       `((success . t)
+         (message . "Person note created successfully")
+         (note . ((id . ,id)
+                  (title . ,name)
+                  (file . ,file-path)
+                  (node_type . "person"))))))))
+
+(defun my/api-create-project (title &optional status next-action notes)
+  "Create a project node with structured fields.
+TITLE is the project name.
+STATUS is optional status (active, waiting, blocked, someday, done).
+NEXT-ACTION is optional next actionable step.
+NOTES is optional additional notes."
+  (my/api--ensure-org-roam-db)
+  (let* ((id (my/api--generate-id))
+         (file-path (my/api--create-structured-file title id "projects"))
+         (status (or status "active")))
+
+    (with-current-buffer (find-file-noselect file-path)
+      (org-mode)
+      (erase-buffer)
+      (insert ":PROPERTIES:\n")
+      (insert (format ":ID: %s\n" id))
+      (insert ":NODE-TYPE: project\n")
+      (insert (format ":STATUS: %s\n" status))
+      (when next-action
+        (insert (format ":NEXT-ACTION: %s\n" next-action)))
+      (insert ":END:\n")
+      (insert (format "#+title: %s\n\n" title))
+
+      ;; Next Actions section
+      (insert "* Next Actions\n")
+      (if next-action
+          (insert (format "- [ ] %s\n" next-action))
+        (insert "\n"))
+
+      ;; Notes section
+      (insert "\n* Notes\n")
+      (when notes
+        (insert (format "%s\n" notes)))
+
+      (save-buffer)
+      (kill-buffer (current-buffer)))
+
+    (org-roam-db-sync)
+
+    ;; Generate embeddings if available
+    (my/api--generate-and-save-embedding file-path)
+
+    (let ((node (org-roam-node-from-id id)))
+      (json-encode
+       `((success . t)
+         (message . "Project note created successfully")
+         (note . ((id . ,id)
+                  (title . ,title)
+                  (file . ,file-path)
+                  (node_type . "project")
+                  (status . ,status))))))))
+
+(defun my/api-create-idea (title one-liner &optional elaboration)
+  "Create an idea node with structured fields.
+TITLE is the idea title.
+ONE-LINER is a brief summary of the insight.
+ELABORATION is optional detailed explanation."
+  (my/api--ensure-org-roam-db)
+  (let* ((id (my/api--generate-id))
+         (file-path (my/api--create-structured-file title id "ideas")))
+
+    (with-current-buffer (find-file-noselect file-path)
+      (org-mode)
+      (erase-buffer)
+      (insert ":PROPERTIES:\n")
+      (insert (format ":ID: %s\n" id))
+      (insert ":NODE-TYPE: idea\n")
+      (insert (format ":ONE-LINER: %s\n" one-liner))
+      (insert ":END:\n")
+      (insert (format "#+title: %s\n\n" title))
+
+      ;; One-liner section
+      (insert "* One-liner\n")
+      (insert (format "%s\n" one-liner))
+
+      ;; Elaboration section
+      (insert "\n* Elaboration\n")
+      (when elaboration
+        (insert (format "%s\n" elaboration)))
+
+      (save-buffer)
+      (kill-buffer (current-buffer)))
+
+    (org-roam-db-sync)
+
+    ;; Generate embeddings if available
+    (my/api--generate-and-save-embedding file-path)
+
+    (let ((node (org-roam-node-from-id id)))
+      (json-encode
+       `((success . t)
+         (message . "Idea note created successfully")
+         (note . ((id . ,id)
+                  (title . ,title)
+                  (file . ,file-path)
+                  (node_type . "idea"))))))))
+
+(defun my/api-create-admin (title &optional due-date notes)
+  "Create an admin task node with structured fields.
+TITLE is the task title.
+DUE-DATE is optional due date in YYYY-MM-DD format.
+NOTES is optional additional notes."
+  (my/api--ensure-org-roam-db)
+  (let* ((id (my/api--generate-id))
+         (file-path (my/api--create-structured-file title id "admin"))
+         (due-timestamp (when due-date
+                         (format "[%s]" due-date))))
+
+    (with-current-buffer (find-file-noselect file-path)
+      (org-mode)
+      (erase-buffer)
+      (insert ":PROPERTIES:\n")
+      (insert (format ":ID: %s\n" id))
+      (insert ":NODE-TYPE: admin\n")
+      (when due-timestamp
+        (insert (format ":DUE-DATE: %s\n" due-timestamp)))
+      (insert ":STATUS: todo\n")
+      (insert ":END:\n")
+      (insert (format "#+title: %s\n\n" title))
+
+      ;; Notes section
+      (insert "* Notes\n")
+      (when notes
+        (insert (format "%s\n" notes)))
+
+      (save-buffer)
+      (kill-buffer (current-buffer)))
+
+    (org-roam-db-sync)
+
+    ;; Generate embeddings if available
+    (my/api--generate-and-save-embedding file-path)
+
+    (let ((node (org-roam-node-from-id id)))
+      (json-encode
+       `((success . t)
+         (message . "Admin task created successfully")
+         (note . ((id . ,id)
+                  (title . ,title)
+                  (file . ,file-path)
+                  (node_type . "admin")
+                  (due_date . ,due-date))))))))
+
+;;; ============================================================================
+;;; PROACTIVE SURFACING (Phase 3)
+;;; ============================================================================
+
+(defun my/api--get-nodes-by-type (node-type &optional file-level-only)
+  "Get all org-roam nodes with NODE-TYPE property matching NODE-TYPE.
+If FILE-LEVEL-ONLY is non-nil, only return one node per file (deduplicates aliases)."
+  (let ((results '())
+        (seen-files (make-hash-table :test 'equal)))
+    (dolist (node (org-roam-node-list))
+      ;; Filter to file-level nodes only (level 0) if requested
+      (when (or (not file-level-only)
+                (= (org-roam-node-level node) 0))
+        (let* ((file (org-roam-node-file node))
+               ;; Skip if we've already processed this file (handles ROAM_ALIASES)
+               (already-seen (and file-level-only (gethash file seen-files))))
+          (unless already-seen
+            (let* ((props (my/api--extract-properties file))
+                   (type (cdr (assoc "node-type" props))))
+              (when (and type (string= (downcase type) (downcase node-type)))
+                (when file-level-only (puthash file t seen-files))
+                (push (cons node props) results)))))))
+    results))
+
+(defun my/api--extract-unchecked-items (file section-name)
+  "Extract unchecked checkbox items from SECTION-NAME in FILE."
+  (when (and file (file-exists-p file))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (goto-char (point-min))
+      (let ((items '()))
+        (when (re-search-forward (format "^\\* %s$" section-name) nil t)
+          (forward-line 1)
+          (while (and (not (eobp))
+                      (not (looking-at "^\\* ")))
+            (when (looking-at "^- \\[ \\] \\(.+\\)$")
+              (push (match-string 1) items))
+            (forward-line 1)))
+        (nreverse items)))))
+
+(defun my/api--file-modified-days-ago (file)
+  "Return number of days since FILE was last modified."
+  (when (and file (file-exists-p file))
+    (let* ((mtime (file-attribute-modification-time (file-attributes file)))
+           (now (current-time))
+           (diff (time-subtract now mtime)))
+      (/ (float-time diff) 86400.0))))
+
+(defun my/api-get-active-projects ()
+  "Get all projects with status=active, ordered by last modified.
+Returns projects with their next actions and modification dates."
+  (my/api--ensure-org-roam-db)
+  (let* ((project-nodes (my/api--get-nodes-by-type "project" t))
+         (active-projects
+          (seq-filter
+           (lambda (node-props)
+             (let ((status (cdr (assoc "status" (cdr node-props)))))
+               (and status (string= (downcase status) "active"))))
+           project-nodes))
+         (enriched-projects
+          (mapcar
+           (lambda (node-props)
+             (let* ((node (car node-props))
+                    (props (cdr node-props))
+                    (file (org-roam-node-file node))
+                    (next-action (cdr (assoc "next-action" props)))
+                    (next-actions (my/api--extract-unchecked-items file "Next Actions"))
+                    (days-ago (my/api--file-modified-days-ago file)))
+               `((id . ,(org-roam-node-id node))
+                 (title . ,(org-roam-node-title node))
+                 (file . ,file)
+                 (status . "active")
+                 (next_action . ,next-action)
+                 (unchecked_actions . ,next-actions)
+                 (days_since_modified . ,(round days-ago)))))
+           active-projects))
+         ;; Sort by days_since_modified ascending (most recently touched first)
+         (sorted-projects
+          (sort enriched-projects
+                (lambda (a b)
+                  (< (cdr (assoc 'days_since_modified a))
+                     (cdr (assoc 'days_since_modified b)))))))
+    (my/api--json-response
+     `((success . t)
+       (total . ,(length sorted-projects))
+       (projects . ,sorted-projects)))))
+
+(defun my/api--get-backlink-files (node)
+  "Get list of files that link to NODE."
+  (let* ((id (org-roam-node-id node))
+         (backlinks (org-roam-db-query
+                     [:select :distinct [source]
+                      :from links
+                      :where (= dest $s1)]
+                     id)))
+    (mapcar #'car backlinks)))
+
+(defun my/api--find-unchecked-items-mentioning (file person-name)
+  "Find unchecked items in FILE that mention PERSON-NAME.
+Returns list of unchecked item texts."
+  (when (and file (file-exists-p file))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (let ((items '())
+            (pattern (concat "^[ \t]*- \\[ \\].*\\[\\[" (regexp-quote person-name) "\\]\\]")))
+        ;; Find unchecked items mentioning this person
+        (goto-char (point-min))
+        (while (re-search-forward "^[ \t]*- \\[ \\] \\(.*\\)$" nil t)
+          (let ((item-text (match-string 1)))
+            (when (string-match-p (regexp-quote person-name) item-text)
+              (push (string-trim item-text) items))))
+        (nreverse items)))))
+
+(defun my/api-get-pending-followups ()
+  "Get all people with unchecked follow-up items in backlinked notes.
+Scans notes that link to each person for unchecked [ ] items mentioning them."
+  (my/api--ensure-org-roam-db)
+  (let* ((person-nodes (my/api--get-nodes-by-type "person" t))
+         (people-with-followups
+          (seq-filter
+           (lambda (node-props)
+             (let* ((node (car node-props))
+                    (name (org-roam-node-title node))
+                    (backlink-files (my/api--get-backlink-files node))
+                    (all-followups '()))
+               ;; Collect unchecked items from all backlinked files
+               (dolist (file backlink-files)
+                 (let ((items (my/api--find-unchecked-items-mentioning file name)))
+                   (setq all-followups (append all-followups items))))
+               (and all-followups (> (length all-followups) 0))))
+           person-nodes))
+         (enriched-people
+          (mapcar
+           (lambda (node-props)
+             (let* ((node (car node-props))
+                    (name (org-roam-node-title node))
+                    (backlink-files (my/api--get-backlink-files node))
+                    (all-followups '()))
+               ;; Collect unchecked items from all backlinked files
+               (dolist (file backlink-files)
+                 (let ((items (my/api--find-unchecked-items-mentioning file name)))
+                   (setq all-followups (append all-followups items))))
+               `((id . ,(org-roam-node-id node))
+                 (name . ,name)
+                 (file . ,(org-roam-node-file node))
+                 (backlink_count . ,(length backlink-files))
+                 (pending_followups . ,all-followups)
+                 (followup_count . ,(length all-followups)))))
+           people-with-followups))
+         ;; Sort by followup_count descending (most follow-ups first)
+         (sorted-people
+          (sort enriched-people
+                (lambda (a b)
+                  (> (cdr (assoc 'followup_count a))
+                     (cdr (assoc 'followup_count b)))))))
+    (my/api--json-response
+     `((success . t)
+       (total . ,(length sorted-people))
+       (people . ,sorted-people)))))
+
+(defun my/api-get-stale-projects (&optional days-threshold)
+  "Get projects with no activity in DAYS-THRESHOLD days (default 5).
+Returns projects that might be stuck or forgotten."
+  (my/api--ensure-org-roam-db)
+  (let* ((threshold (or days-threshold 5))
+         (project-nodes (my/api--get-nodes-by-type "project" t))
+         (active-projects
+          (seq-filter
+           (lambda (node-props)
+             (let ((status (cdr (assoc "status" (cdr node-props)))))
+               (and status
+                    (not (string= (downcase status) "done"))
+                    (not (string= (downcase status) "someday")))))
+           project-nodes))
+         (stale-projects
+          (seq-filter
+           (lambda (node-props)
+             (let* ((node (car node-props))
+                    (file (org-roam-node-file node))
+                    (days-ago (my/api--file-modified-days-ago file)))
+               (and days-ago (>= days-ago threshold))))
+           active-projects))
+         (enriched-projects
+          (mapcar
+           (lambda (node-props)
+             (let* ((node (car node-props))
+                    (props (cdr node-props))
+                    (file (org-roam-node-file node))
+                    (status (cdr (assoc "status" props)))
+                    (next-action (cdr (assoc "next-action" props)))
+                    (days-ago (my/api--file-modified-days-ago file)))
+               `((id . ,(org-roam-node-id node))
+                 (title . ,(org-roam-node-title node))
+                 (file . ,file)
+                 (status . ,status)
+                 (next_action . ,next-action)
+                 (days_since_modified . ,(round days-ago)))))
+           stale-projects))
+         ;; Sort by days_since_modified descending (most stale first)
+         (sorted-projects
+          (sort enriched-projects
+                (lambda (a b)
+                  (> (cdr (assoc 'days_since_modified a))
+                     (cdr (assoc 'days_since_modified b)))))))
+    (my/api--json-response
+     `((success . t)
+       (threshold_days . ,threshold)
+       (total . ,(length sorted-projects))
+       (projects . ,sorted-projects)))))
+
+(defun my/api-get-weekly-inbox (&optional days)
+  "Get inbox entries from the past DAYS days (default 7).
+Returns entries grouped by day for weekly review."
+  (my/api--ensure-org-roam-db)
+  (let* ((num-days (or days 7))
+         (daily-dir (expand-file-name "daily" org-roam-directory))
+         (entries-by-day '())
+         (total-entries 0))
+    ;; Iterate through past N days
+    (dotimes (i num-days)
+      (let* ((date (format-time-string "%Y-%m-%d"
+                                       (time-subtract (current-time)
+                                                     (days-to-time i))))
+             (daily-file (expand-file-name (concat date ".org") daily-dir))
+             (day-entries '()))
+        (when (file-exists-p daily-file)
+          (with-temp-buffer
+            (insert-file-contents daily-file)
+            (goto-char (point-min))
+            ;; Find Inbox section
+            (when (re-search-forward "^\\* Inbox$" nil t)
+              (forward-line 1)
+              ;; Parse inbox entries
+              (while (and (not (eobp))
+                          (not (looking-at "^\\* [^I]")))
+                (when (looking-at "^\\*\\* \\(DONE\\|TODO\\) /\\([^ ]+\\) → \\(.+\\)$")
+                  (let ((status (match-string 1))
+                        (command (match-string 2))
+                        (result (match-string 3))
+                        (captured nil)
+                        (original nil))
+                    ;; Extract properties
+                    (save-excursion
+                      (when (re-search-forward ":CAPTURED: \\(.+\\)" nil t)
+                        (setq captured (match-string 1)))
+                      (when (re-search-forward ":ORIGINAL: \\(.+\\)" nil t)
+                        (setq original (match-string 1))))
+                    (push `((status . ,status)
+                            (command . ,command)
+                            (result . ,result)
+                            (captured . ,captured)
+                            (original . ,original))
+                          day-entries)
+                    (setq total-entries (1+ total-entries))))
+                (forward-line 1)))))
+        (when day-entries
+          (push `((date . ,date)
+                  (entries . ,(nreverse day-entries))
+                  (count . ,(length day-entries)))
+                entries-by-day))))
+    (my/api--json-response
+     `((success . t)
+       (days_covered . ,num-days)
+       (total_entries . ,total-entries)
+       (by_day . ,(nreverse entries-by-day))))))
+
+(defun my/api-get-digest-data ()
+  "Get all data needed for daily digest in a single call.
+Combines active projects, pending follow-ups, and stale projects."
+  (my/api--ensure-org-roam-db)
+  (let* ((active-result (json-read-from-string (my/api-get-active-projects)))
+         (followups-result (json-read-from-string (my/api-get-pending-followups)))
+         (stale-result (json-read-from-string (my/api-get-stale-projects 5))))
+    (my/api--json-response
+     `((success . t)
+       (generated_at . ,(format-time-string "%Y-%m-%d %H:%M:%S"))
+       (active_projects . ((total . ,(cdr (assoc 'total active-result)))
+                           (top_3 . ,(seq-take (cdr (assoc 'projects active-result)) 3))))
+       (pending_followups . ((total . ,(cdr (assoc 'total followups-result)))
+                             (people . ,(cdr (assoc 'people followups-result)))))
+       (stale_projects . ((total . ,(cdr (assoc 'total stale-result)))
+                          (projects . ,(cdr (assoc 'projects stale-result)))))))))
+
+(defun my/api--extract-link-names (text)
+  "Extract all [[Name]] links from TEXT.
+Returns list of names found."
+  (let ((names '())
+        (start 0))
+    (while (string-match "\\[\\[\\([^]]+\\)\\]\\]" text start)
+      (push (match-string 1 text) names)
+      (setq start (match-end 0)))
+    (nreverse names)))
+
+(defun my/api-get-dangling-followups ()
+  "Find unchecked items with [[Name]] links where the person node doesn't exist.
+Scans all org files for unchecked items mentioning untracked people."
+  (my/api--ensure-org-roam-db)
+  (let ((dangling-items '())
+        (seen-names (make-hash-table :test 'equal)))
+    ;; Scan all org files in org-roam-directory
+    (dolist (file (directory-files-recursively org-roam-directory "\\.org$"))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (while (re-search-forward "^[ \t]*- \\[ \\] \\(.*\\[\\[.+\\]\\].*\\)$" nil t)
+          (let* ((item-text (match-string 1))
+                 (names (my/api--extract-link-names item-text)))
+            ;; Check each linked name
+            (dolist (name names)
+              (unless (or (gethash name seen-names)
+                          (my/api--node-exists-p name))
+                (puthash name t seen-names)
+                (push `((name . ,name)
+                        (item . ,(string-trim item-text))
+                        (file . ,file))
+                      dangling-items)))))))
+    (my/api--json-response
+     `((success . t)
+       (total . ,(length dangling-items))
+       (untracked_people . ,(nreverse dangling-items))))))
+
+(defun my/api--node-exists-p (title)
+  "Check if an org-roam node with TITLE exists."
+  (org-roam-node-from-title-or-alias title))
+
+(defun my/api--create-minimal-person (name)
+  "Create a minimal person node for NAME if it doesn't exist.
+Returns the node ID if created, nil if already exists."
+  (unless (my/api--node-exists-p name)
+    (let* ((slug (org-roam-node-slug (org-roam-node-create :title name)))
+           (filename (format "%s-%s.org"
+                            (format-time-string "%Y%m%d%H%M%S")
+                            slug))
+           (filepath (expand-file-name filename org-roam-directory))
+           (id (org-id-new)))
+      (with-temp-file filepath
+        (insert (format ":PROPERTIES:\n:ID: %s\n:NODE-TYPE: person\n:END:\n#+title: %s\n"
+                       id name)))
+      (org-roam-db-sync)
+      ;; Generate embeddings if org-roam-semantic is available
+      (my/api--generate-and-save-embedding filepath)
+      id)))
+
+(defun my/api-log-to-inbox (text)
+  "Log TEXT to inbox and auto-create person nodes for [[Name]] links.
+Returns list of any person nodes that were created."
+  (let* ((today (format-time-string "%Y-%m-%d"))
+         (daily-file (expand-file-name (concat today ".org")
+                                       (expand-file-name "daily" org-roam-directory)))
+         (timestamp (format-time-string "[%Y-%m-%d %a %H:%M]"))
+         (link-names (my/api--extract-link-names text))
+         (created-people '()))
+
+    ;; Auto-create person nodes for any [[Name]] links that don't exist
+    (dolist (name link-names)
+      (when (my/api--create-minimal-person name)
+        (push name created-people)))
+
+    ;; Ensure daily directory exists
+    (unless (file-exists-p (file-name-directory daily-file))
+      (make-directory (file-name-directory daily-file) t))
+
+    ;; Create daily file if it doesn't exist
+    (unless (file-exists-p daily-file)
+      (with-temp-file daily-file
+        (insert (format "#+title: %s\n#+filetags: :daily:\n\n" today))))
+
+    (with-current-buffer (find-file-noselect daily-file)
+      ;; Find or create Inbox section
+      (goto-char (point-min))
+      (let ((inbox-pos (re-search-forward "^\\* Inbox$" nil t)))
+        (if inbox-pos
+            (progn
+              (end-of-line)
+              (newline))
+          ;; Create Inbox section at end
+          (goto-char (point-max))
+          (unless (bolp) (newline))
+          (insert "* Inbox\n")))
+
+      ;; Add the entry
+      (insert (format "- %s %s\n" timestamp text))
+      (save-buffer))
+
+    (my/api--json-response
+     `((success . t)
+       (logged . ,text)
+       (created_people . ,(nreverse created-people))))))
 
 (provide 'org-roam-api)
 ;;; org-roam-api.el ends here
