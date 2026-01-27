@@ -35,7 +35,7 @@ class EmacsClient:
                 self.server_file = os.path.expanduser("~/.emacs.d/server/server")
                 logger.info(f"Using default Emacs server path: {self.server_file}")
         
-        self.timeout = 30  # seconds
+        self.timeout = 300  # seconds
         
         # Log the resolved server file path for debugging
         logger.info(f"EmacsClient initialized with server file: {self.server_file}")
@@ -230,6 +230,47 @@ class EmacsClient:
         cleaned = ''.join(result)
         return json.loads(cleaned)
 
+    def _pre_clean_response(self, response: str) -> str:
+        """Pre-clean response by removing raw control characters that would break JSON parsing.
+
+        This handles the case where emacsclient returns strings with unescaped control
+        characters embedded in JSON string values.
+        """
+        result = []
+        in_string = False
+        i = 0
+        while i < len(response):
+            char = response[i]
+
+            # Track string boundaries (but be careful of escaped quotes)
+            if char == '"' and (i == 0 or response[i-1] != '\\'):
+                in_string = not in_string
+                result.append(char)
+                i += 1
+                continue
+
+            # If we're inside a JSON string value, escape control characters
+            if in_string:
+                code = ord(char)
+                if code < 32:  # Control characters
+                    if code == 9:  # tab
+                        result.append('\\t')
+                    elif code == 10:  # newline
+                        result.append('\\n')
+                    elif code == 13:  # carriage return
+                        result.append('\\r')
+                    else:
+                        result.append(f'\\u{code:04x}')
+                elif code == 127:  # DEL
+                    result.append('\\u007f')
+                else:
+                    result.append(char)
+            else:
+                result.append(char)
+            i += 1
+
+        return ''.join(result)
+
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         """Parse JSON response from elisp function.
 
@@ -242,6 +283,9 @@ class EmacsClient:
         Raises:
             EmacsClientError: If JSON parsing fails
         """
+        # Pre-clean the response to handle raw control characters in string values
+        response = self._pre_clean_response(response)
+
         try:
             # Handle case where response might be a character array
             parsed = json.loads(response)
@@ -250,6 +294,8 @@ class EmacsClient:
             # returns a JSON string, we get ""{"success":true,...}"" which
             # json.loads() parses to a string. Parse it again if needed.
             if isinstance(parsed, str):
+                # Pre-clean the inner string as well
+                parsed = self._pre_clean_response(parsed)
                 try:
                     parsed = json.loads(parsed)
                 except json.JSONDecodeError:
@@ -650,7 +696,7 @@ class EmacsClient:
         Returns:
             Sync result
         """
-        force_param = "\\'force" if force else "nil"
+        force_param = "'force" if force else "nil"
         expression = f"(org-roam-db-sync {force_param})"
 
         try:
