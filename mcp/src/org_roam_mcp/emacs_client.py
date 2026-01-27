@@ -651,6 +651,57 @@ class EmacsClient:
             }
 
 
+
+    def generate_note_embedding(self, file_path: str) -> Dict[str, Any]:
+        """Generate embedding for a single org-roam note file.
+
+        Calls org-roam-semantic-generate-embedding for one file instead of
+        batch-processing all notes. Much faster for newly created/updated notes.
+
+        Args:
+            file_path: Absolute path to the org file
+
+        Returns:
+            Result with success status and message
+        """
+        escaped_path = self._escape_for_elisp(file_path)
+        # Use single quotes for shell to preserve double quotes in elisp string
+        elisp = f'(org-roam-semantic-generate-embedding "{escaped_path}")'
+
+        try:
+            if os.path.exists(self.server_file):
+                command = f"emacsclient --server-file={self.server_file} -e '{elisp}'"
+            else:
+                command = f"emacsclient -e '{elisp}'"
+            response = self._execute_command(command)
+
+            # Response like: "Chunk embedding generation complete for file.org: 12 processed, 1 skipped"
+            response_str = response.strip().strip('"')
+
+            # Save modified org buffer to persist embedding to disk
+            save_elisp = f'(let ((buf (find-buffer-visiting "{escaped_path}"))) (when buf (with-current-buffer buf (save-buffer))))'
+            if os.path.exists(self.server_file):
+                save_cmd = f"emacsclient --server-file={self.server_file} -e '{save_elisp}'"
+            else:
+                save_cmd = f"emacsclient -e '{save_elisp}'"
+            try:
+                self._execute_command(save_cmd)
+            except Exception as save_err:
+                logger.warning(f"Failed to save buffer after embedding: {save_err}")
+
+            return {
+                "success": True,
+                "message": response_str,
+                "file": file_path
+            }
+        except Exception as e:
+            logger.error(f"Failed to generate note embedding: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "file": file_path
+            }
+
     def add_inbox_entry(
         self,
         command: str,
