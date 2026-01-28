@@ -448,7 +448,31 @@ TOOL_SCHEMAS = [
             "properties": {},
             "required": []
         }
-    }
+    },
+    {
+        "name": "change_task_state",
+        "description": "Change the TODO state of a task in an org-roam project file. Triggers journal logging hooks for state change tracking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Path to the org file (e.g., ~/org-roam/projects/my-project.org)"
+                },
+                "heading": {
+                    "type": "string",
+                    "description": "The task heading text to find"
+                },
+                "new_state": {
+                    "type": "string",
+                    "description": "New TODO state",
+                    "enum": ["TODO", "IN-PROGRESS", "BLOCKED", "DONE", "CANCELLED"]
+                }
+            },
+            "required": ["file", "heading", "new_state"]
+        }
+    },
+
 ]
 
 # Create MCP server
@@ -636,6 +660,24 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
             )
 
 
+
+        elif tool_name == "change_task_state":
+            file = arguments["file"]
+            heading = arguments["heading"]
+            new_state = arguments["new_state"]
+
+            result = emacs_client.change_task_state(file, heading, new_state)
+
+            if result.get("success"):
+                response = f"Task state changed: {heading} to {new_state}"
+                if result.get("message"):
+                    response += "\n" + result.get("message")
+            else:
+                response = f"Failed to change task state: {result.get('error', 'Unknown error')}"
+
+            return CallToolResult(
+                content=[TextContent(type="text", text=response)]
+            )
         elif tool_name == "generate_note_embedding":
             file_path = arguments["file_path"]
 

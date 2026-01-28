@@ -980,3 +980,21 @@ class EmacsClient:
         """
         expression = '(my/api-get-dangling-followups)'
         return self.eval_elisp(expression)
+
+    def change_task_state(self, file: str, heading: str, new_state: str):
+        """Change the TODO state of a task using emacsclient.
+        
+        This triggers org-after-todo-state-change-hook, which logs to daily notes.
+        """
+        try:
+            escaped_file = self._escape_for_elisp(file)
+            escaped_heading = self._escape_for_elisp(heading)
+            escaped_state = self._escape_for_elisp(new_state)
+            
+            elisp = f'(my/org-roam-change-task-state "{escaped_file}" "{escaped_heading}" "{escaped_state}")'
+            result = self._execute_elisp(elisp)
+            
+            return {"success": True, "message": result}
+        except EmacsClientError as e:
+            return {"success": False, "error": str(e)}
+
