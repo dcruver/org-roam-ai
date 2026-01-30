@@ -82,6 +82,14 @@ output through emacsclient."
     (replace-regexp-in-string
      "^:EMBEDDING[^:]*:.*$" "" content)))
 
+(defun my/api--save-buffer-no-hooks ()
+  "Save buffer without triggering before-save and after-save hooks.
+Avoids slow hooks like embedding generation or toc-org on large files."
+  (let ((inhibit-read-only t))
+    (write-region (point-min) (point-max) (buffer-file-name) nil :silent)
+    (set-buffer-modified-p nil)))
+
+
 
 
 (defun my/api--generate-and-save-embedding (file-path)
@@ -1460,7 +1468,7 @@ MODE is \"append\" (default), \"prepend\", or \"replace\"."
                   (goto-char (point-max))
                   (unless (bolp) (insert "\n"))
                   (insert content "\n"))))
-              (save-buffer)
+              (my/api--save-buffer-no-hooks)
               (let ((updated-content (my/api--strip-embedding-properties
                                       (buffer-substring-no-properties (point-min) (point-max)))))
                 (json-encode
