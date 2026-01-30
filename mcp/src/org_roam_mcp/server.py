@@ -71,6 +71,24 @@ TOOL_SCHEMAS = [
         }
     },
     {
+        "name": "read_note",
+        "description": "Read full content of a note by ID or path. Use this to retrieve note contents without searching.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {
+                    "type": "string",
+                    "description": "Org-roam node ID or path relative to org-roam directory (e.g. projects/my-project.org)"
+                },
+                "section": {
+                    "type": "string",
+                    "description": "Optional: heading name to return only that section content"
+                }
+            },
+            "required": ["identifier"]
+        }
+    },
+    {
         "name": "semantic_search",
         "description": "Semantic vector search using AI embeddings to find conceptually related notes",
         "inputSchema": {
@@ -528,6 +546,35 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                     )
                 ]
             )
+        elif tool_name == "read_note":
+            identifier = arguments["identifier"]
+            section = arguments.get("section")
+
+            result = emacs_client.read_note(identifier, section)
+            result = _sanitize_result(result)
+
+            if result.get("success"):
+                title = result.get("title", "Unknown")
+                file_path = result.get("file", "")
+                note_content = result.get("content", "")
+                
+                # Truncate content if too long
+                if len(note_content) > 50000:
+                    note_content = note_content[:50000] + "\n\n... [truncated]"
+                
+                response = f"**{title}**\nFile: {file_path}\n\n{note_content}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=response
+                    )
+                ]
+            )
+
 
         elif tool_name == "semantic_search":
             query = arguments["query"]
@@ -1272,6 +1319,46 @@ def create_starlette_app():
                         media_type="application/json",
                         headers={"Content-Type": "application/json; charset=utf-8"}
                     )
+                
+                elif tool_name == "read_note":
+                    result = emacs_client.read_note(
+                        arguments.get("identifier"),
+                        arguments.get("section")
+                    )
+                    result = _sanitize_result(result)
+
+                    if result.get("success"):
+                        title = result.get("title", "Unknown")
+                        file_path = result.get("file", "")
+                        note_content = result.get("content", "")
+                        
+                        if len(note_content) > 50000:
+                            note_content = note_content[:50000] + "\n\n... [truncated]"
+                        
+                        formatted_text = f"**{title}**\nFile: {file_path}\n\n{note_content}"
+                    else:
+                        formatted_text = f"Error: {result.get('error', 'Unknown error')}"
+
+                    response_data = {
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
+                        }
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
+
                 elif tool_name == "semantic_search":
                     result = emacs_client.semantic_search(
                         arguments.get("query"),

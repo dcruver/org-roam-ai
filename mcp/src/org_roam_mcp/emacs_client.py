@@ -998,3 +998,19 @@ class EmacsClient:
         except EmacsClientError as e:
             return {"success": False, "error": str(e)}
 
+
+    def read_note(self, identifier: str, section: str = None) -> Dict[str, Any]:
+        """Read full content of a note by ID or path.
+
+        Args:
+            identifier: Org-roam ID or path relative to org-roam-directory
+            section: Optional heading name to return only that section
+
+        Returns:
+            Note content, title, properties, and metadata
+        """
+        if section:
+            expression = f'(my/api-read-note "{self._escape_for_elisp(identifier)}" "{self._escape_for_elisp(section)}")'
+        else:
+            expression = f'(my/api-read-note "{self._escape_for_elisp(identifier)}")'
+        return self.eval_elisp(expression)

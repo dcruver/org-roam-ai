@@ -1326,3 +1326,59 @@ Returns list of any person nodes that were created."
 
 (provide 'org-roam-api)
 ;;; org-roam-api.el ends here
+
+(defun my/api-read-note (identifier &optional section)
+  "Read full content of a note by ID or path.
+IDENTIFIER can be an org-roam ID or a path relative to org-roam-directory.
+If SECTION is provided, return only that heading's content."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((file (cond
+                    ;; Check if it's a file path
+                    ((and (stringp identifier)
+                          (or (file-exists-p identifier)
+                              (file-exists-p (expand-file-name identifier org-roam-directory))))
+                     (if (file-exists-p identifier)
+                         identifier
+                       (expand-file-name identifier org-roam-directory)))
+                    ;; Otherwise treat as org-roam ID
+                    (t (when-let ((node (org-roam-node-from-id identifier)))
+                         (org-roam-node-file node)))))
+             (node (when file
+                     (let ((id (caar (org-roam-db-query 
+                                     [:select [id] :from nodes :where (= file $s1)] 
+                                     file))))
+                       (when id (org-roam-node-from-id id))))))
+        (if (not file)
+            (json-encode `((success . :json-false)
+                          (error . ,(format "Note not found: %s" identifier))))
+          (let* ((raw-content (with-temp-buffer
+                               (insert-file-contents file)
+                               (buffer-string)))
+                 (content (my/api--strip-embedding-properties raw-content))
+                 (title (when node (org-roam-node-title node)))
+                 (properties (my/api--extract-properties file)))
+            ;; If section specified, extract just that section
+            (when section
+              (setq content
+                    (with-temp-buffer
+                      (insert content)
+                      (org-mode)
+                      (goto-char (point-min))
+                      (if (re-search-forward 
+                           (format "^\\*+[ \t]+%s" (regexp-quote section)) nil t)
+                          (let ((start (line-beginning-position))
+                                (end (save-excursion
+                                       (org-end-of-subtree t t)
+                                       (point))))
+                            (buffer-substring-no-properties start end))
+                        (format "Section not found: %s" section)))))
+            (json-encode
+             `((success . t)
+               (file . ,file)
+               (title . ,title)
+               (properties . ,properties)
+               (content . ,content))))))
+    (error
+     (json-encode `((success . :json-false)
+                   (error . ,(format "Error reading note: %s" (error-message-string err))))))))
