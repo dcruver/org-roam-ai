@@ -1382,3 +1382,158 @@ If SECTION is provided, return only that heading's content."
     (error
      (json-encode `((success . :json-false)
                    (error . ,(format "Error reading note: %s" (error-message-string err))))))))
+
+(defun my/api-update-note (identifier content &optional section mode)
+  "Update content in a note by ID or path.
+IDENTIFIER can be an org-roam ID or a path relative to org-roam-directory.
+CONTENT is the text to add.
+SECTION is an optional heading name to target.
+MODE is \"append\" (default), \"prepend\", or \"replace\"."
+  (my/api--ensure-org-roam-db)
+  (let ((mode (or mode "append")))
+    (condition-case err
+        (let* ((file (cond
+                      ;; Check if it's a file path
+                      ((and (stringp identifier)
+                            (or (file-exists-p identifier)
+                                (file-exists-p (expand-file-name identifier org-roam-directory))))
+                       (if (file-exists-p identifier)
+                           identifier
+                         (expand-file-name identifier org-roam-directory)))
+                      ;; Otherwise treat as org-roam ID
+                      (t (when-let ((node (org-roam-node-from-id identifier)))
+                           (org-roam-node-file node))))))
+          (if (not file)
+              (json-encode `((success . :json-false)
+                            (error . ,(format "Note not found: %s" identifier))))
+            (with-current-buffer (find-file-noselect file)
+              (org-mode)
+              (if section
+                  ;; Target specific section
+                  (progn
+                    (goto-char (point-min))
+                    (if (re-search-forward 
+                         (format "^\\(\\*+\\)[ \t]+%s" (regexp-quote section)) nil t)
+                        (let ((level (length (match-string 1))))
+                          (cond
+                           ((string= mode "replace")
+                            ;; Replace section content (keep heading)
+                            (end-of-line)
+                            (let ((start (point))
+                                  (end (save-excursion
+                                         (org-end-of-subtree t t)
+                                         (point))))
+                              (delete-region start end)
+                              (insert "\n" content "\n")))
+                           ((string= mode "prepend")
+                            ;; Insert right after heading
+                            (end-of-line)
+                            (insert "\n" content))
+                           (t ; append (default)
+                            ;; Insert at end of section, before next heading
+                            (let ((end (save-excursion
+                                         (org-end-of-subtree t t)
+                                         (skip-chars-backward " \t\n")
+                                         (point))))
+                              (goto-char end)
+                              (insert "\n" content)))))
+                      ;; Section not found - create it
+                      (goto-char (point-max))
+                      (unless (bolp) (insert "\n"))
+                      (insert (format "* %s\n%s\n" section content))))
+                ;; No section - operate on whole file
+                (cond
+                 ((string= mode "replace")
+                  ;; Replace everything after properties/title
+                  (goto-char (point-min))
+                  (when (re-search-forward "^#\\+title:.*\n+" nil t)
+                    (delete-region (point) (point-max))
+                    (insert content "\n")))
+                 ((string= mode "prepend")
+                  ;; Insert after properties/title
+                  (goto-char (point-min))
+                  (if (re-search-forward "^#\\+title:.*\n+" nil t)
+                      (insert content "\n")
+                    (goto-char (point-min))
+                    (insert content "\n")))
+                 (t ; append (default)
+                  (goto-char (point-max))
+                  (unless (bolp) (insert "\n"))
+                  (insert content "\n"))))
+              (save-buffer)
+              (let ((updated-content (my/api--strip-embedding-properties
+                                      (buffer-substring-no-properties (point-min) (point-max)))))
+                (json-encode
+                 `((success . t)
+                   (file . ,file)
+                   (mode . ,mode)
+                   (section . ,section)
+                   (content_preview . ,(substring updated-content 0 (min 500 (length updated-content))))))))))
+      (error
+       (json-encode `((success . :json-false)
+                     (error . ,(format "Error updating note: %s" (error-message-string err)))))))))
+
+(defun my/api-list-notes (&optional node-type status limit sort-by)
+  "List org-roam notes with optional filters.
+NODE-TYPE: \"project\", \"person\", \"idea\", \"admin\", \"blog\", or nil for all.
+STATUS: \"active\", \"stale\", \"done\", \"cancelled\", or nil for all.
+LIMIT: Maximum number of results (default 50).
+SORT-BY: \"created\", \"modified\", or \"title\" (default \"modified\")."
+  (my/api--ensure-org-roam-db)
+  (let* ((limit (or limit 50))
+         (sort-by (or sort-by "modified"))
+         (all-nodes (org-roam-node-list))
+         (filtered-nodes
+          (seq-filter
+           (lambda (node)
+             (let* ((file (org-roam-node-file node))
+                    (props (my/api--extract-properties file))
+                    (node-type-prop (cdr (assoc "node-type" props)))
+                    (status-prop (downcase (or (cdr (assoc "status" props)) ""))))
+               (and
+                ;; Filter by node-type if specified
+                (or (not node-type)
+                    (string= (downcase (or node-type-prop "")) (downcase node-type)))
+                ;; Filter by status if specified
+                (or (not status)
+                    (string= status-prop (downcase status))))))
+           all-nodes))
+         ;; Sort
+         (sorted-nodes
+          (sort filtered-nodes
+                (lambda (a b)
+                  (cond
+                   ((string= sort-by "title")
+                    (string< (org-roam-node-title a) (org-roam-node-title b)))
+                   ((string= sort-by "created")
+                    (time-less-p (org-roam-node-file-mtime b)
+                                (org-roam-node-file-mtime a)))
+                   (t ; modified (default) - most recent first
+                    (time-less-p (org-roam-node-file-mtime b)
+                                (org-roam-node-file-mtime a)))))))
+         ;; Limit results
+         (limited-nodes (seq-take sorted-nodes limit))
+         ;; Convert to JSON format
+         (results
+          (mapcar
+           (lambda (node)
+             (let* ((file (org-roam-node-file node))
+                    (props (my/api--extract-properties file)))
+               `((id . ,(org-roam-node-id node))
+                 (title . ,(org-roam-node-title node))
+                 (file . ,file)
+                 (node_type . ,(cdr (assoc "node-type" props)))
+                 (status . ,(cdr (assoc "status" props)))
+                 (priority . ,(cdr (assoc "priority" props)))
+                 (modified . ,(format-time-string "%Y-%m-%d %H:%M:%S"
+                                                  (org-roam-node-file-mtime node))))))
+           limited-nodes)))
+    (json-encode
+     `((success . t)
+       (total_found . ,(length filtered-nodes))
+       (returned . ,(length limited-nodes))
+       (filters . ((node_type . ,node-type)
+                   (status . ,status)
+                   (sort_by . ,sort-by)
+                   (limit . ,limit)))
+       (notes . ,results)))))

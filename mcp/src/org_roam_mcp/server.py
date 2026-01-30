@@ -491,6 +491,67 @@ TOOL_SCHEMAS = [
         }
     },
 
+    {
+        "name": "update_note",
+        "description": "Update content in a note by appending, prepending, or replacing. Can target specific sections.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {
+                    "type": "string",
+                    "description": "Org-roam node ID or path relative to org-roam directory"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to add to the note"
+                },
+                "section": {
+                    "type": "string",
+                    "description": "Optional: heading name to target (creates if not found)"
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "How to add content: append (default), prepend, or replace",
+                    "enum": ["append", "prepend", "replace"],
+                    "default": "append"
+                }
+            },
+            "required": ["identifier", "content"]
+        }
+    },
+    {
+        "name": "list_notes",
+        "description": "List org-roam notes with optional filters by type and status. Use when you need to discover notes without a search query.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "node_type": {
+                    "type": "string",
+                    "description": "Filter by note type",
+                    "enum": ["project", "person", "idea", "admin", "blog"]
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status",
+                    "enum": ["active", "stale", "done", "cancelled"]
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results to return",
+                    "default": 50,
+                    "minimum": 1,
+                    "maximum": 200
+                },
+                "sort_by": {
+                    "type": "string",
+                    "description": "Sort order",
+                    "enum": ["modified", "created", "title"],
+                    "default": "modified"
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 # Create MCP server
@@ -575,6 +636,63 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                 ]
             )
 
+
+
+        elif tool_name == "update_note":
+            identifier = arguments["identifier"]
+            content = arguments["content"]
+            section = arguments.get("section")
+            mode = arguments.get("mode", "append")
+
+            result = emacs_client.update_note(identifier, content, section, mode)
+            result = _sanitize_result(result)
+
+            if result.get("success"):
+                file_path = result.get("file", "")
+                section_desc = section if section else "(whole file)"
+                response = f"Note updated successfully.\nFile: {file_path}\nMode: {mode}\nSection: {section_desc}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=response
+                    )
+                ]
+            )
+
+        elif tool_name == "list_notes":
+            node_type = arguments.get("node_type")
+            status = arguments.get("status")
+            limit = arguments.get("limit", 50)
+            sort_by = arguments.get("sort_by", "modified")
+
+            result = emacs_client.list_notes(node_type, status, limit, sort_by)
+            result = _sanitize_result(result)
+
+            if result.get("success"):
+                notes = result.get("notes", [])
+                total = result.get("total_found", 0)
+                lines = [f"Found {total} notes (showing {len(notes)}):"]
+                for note in notes:
+                    status_str = f" [{note.get('status', '')}]" if note.get('status') else ""
+                    type_str = f" ({note.get('node_type', '')})" if note.get('node_type') else ""
+                    lines.append(f"- **{note.get('title', 'Untitled')}**{type_str}{status_str}")
+                    lines.append(f"  ID: {note.get('id', 'N/A')} | Modified: {note.get('modified', 'N/A')}")
+                response = "\n".join(lines)
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=response
+                    )
+                ]
+            )
 
         elif tool_name == "semantic_search":
             query = arguments["query"]
@@ -1359,6 +1477,86 @@ def create_starlette_app():
                         headers={"Content-Type": "application/json; charset=utf-8"}
                     )
 
+
+                elif tool_name == "update_note":
+                    result = emacs_client.update_note(
+                        arguments.get("identifier"),
+                        arguments.get("content"),
+                        arguments.get("section"),
+                        arguments.get("mode", "append")
+                    )
+                    result = _sanitize_result(result)
+
+                    if result.get("success"):
+                        file_path = result.get("file", "")
+                        mode = arguments.get("mode", "append")
+                        section = arguments.get("section")
+                        section_desc = section if section else "(whole file)"
+                        formatted_text = f"Note updated successfully.\nFile: {file_path}\nMode: {mode}\nSection: {section_desc}"
+                    else:
+                        formatted_text = f"Error: {result.get('error', 'Unknown error')}"
+
+                    response_data = {
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
+                        }
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
+
+                elif tool_name == "list_notes":
+                    result = emacs_client.list_notes(
+                        arguments.get("node_type"),
+                        arguments.get("status"),
+                        arguments.get("limit", 50),
+                        arguments.get("sort_by", "modified")
+                    )
+                    result = _sanitize_result(result)
+
+                    if result.get("success"):
+                        notes = result.get("notes", [])
+                        total = result.get("total_found", 0)
+                        lines = [f"Found {total} notes (showing {len(notes)}):"]
+                        for note in notes:
+                            status_str = f" [{note.get('status', '')}]" if note.get('status') else ""
+                            type_str = f" ({note.get('node_type', '')})" if note.get('node_type') else ""
+                            lines.append(f"- **{note.get('title', 'Untitled')}**{type_str}{status_str}")
+                            lines.append(f"  ID: {note.get('id', 'N/A')} | Modified: {note.get('modified', 'N/A')}")
+                        formatted_text = "\n".join(lines)
+                    else:
+                        formatted_text = f"Error: {result.get('error', 'Unknown error')}"
+
+                    response_data = {
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": formatted_text
+                                }
+                            ]
+                        }
+                    }
+
+                    json_content = json.dumps(response_data, ensure_ascii=False)
+                    return Response(
+                        content=json_content,
+                        media_type="application/json",
+                        headers={"Content-Type": "application/json; charset=utf-8"}
+                    )
                 elif tool_name == "semantic_search":
                     result = emacs_client.semantic_search(
                         arguments.get("query"),
@@ -1680,6 +1878,30 @@ def create_starlette_app():
 
                 elif tool_name == "get_dangling_followups":
                     result = emacs_client.get_dangling_followups()
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": result
+                    })
+
+                elif tool_name == "update_note":
+                    identifier = arguments.get("identifier")
+                    content = arguments.get("content")
+                    section = arguments.get("section")
+                    mode = arguments.get("mode", "append")
+                    result = emacs_client.update_note(identifier, content, section, mode)
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_request.get("id"),
+                        "result": result
+                    })
+
+                elif tool_name == "list_notes":
+                    node_type = arguments.get("node_type")
+                    status = arguments.get("status")
+                    limit = arguments.get("limit", 50)
+                    sort_by = arguments.get("sort_by", "modified")
+                    result = emacs_client.list_notes(node_type, status, limit, sort_by)
                     return JSONResponse({
                         "jsonrpc": "2.0",
                         "id": rpc_request.get("id"),

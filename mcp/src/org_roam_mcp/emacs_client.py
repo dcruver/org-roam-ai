@@ -1014,3 +1014,45 @@ class EmacsClient:
         else:
             expression = f'(my/api-read-note "{self._escape_for_elisp(identifier)}")'
         return self.eval_elisp(expression)
+
+    def update_note(self, identifier: str, content: str, section: str = None, mode: str = "append") -> Dict[str, Any]:
+        """Update content in a note by ID or path.
+
+        Args:
+            identifier: Org-roam ID or path relative to org-roam-directory
+            content: Content to add
+            section: Optional heading name to target
+            mode: "append" (default), "prepend", or "replace"
+
+        Returns:
+            Success status and preview of updated content
+        """
+        escaped_id = self._escape_for_elisp(identifier)
+        escaped_content = self._escape_for_elisp(content)
+        escaped_mode = self._escape_for_elisp(mode)
+        
+        if section:
+            escaped_section = self._escape_for_elisp(section)
+            expression = f'(my/api-update-note "{escaped_id}" "{escaped_content}" "{escaped_section}" "{escaped_mode}")'
+        else:
+            expression = f'(my/api-update-note "{escaped_id}" "{escaped_content}" nil "{escaped_mode}")'
+        return self.eval_elisp(expression)
+
+    def list_notes(self, node_type: str = None, status: str = None, limit: int = 50, sort_by: str = "modified") -> Dict[str, Any]:
+        """List org-roam notes with optional filters.
+
+        Args:
+            node_type: "project", "person", "idea", "admin", "blog", or None for all
+            status: "active", "stale", "done", "cancelled", or None for all
+            limit: Maximum number of results (default 50)
+            sort_by: "created", "modified", or "title" (default "modified")
+
+        Returns:
+            List of notes matching filters
+        """
+        type_arg = f'"{node_type}"' if node_type else 'nil'
+        status_arg = f'"{status}"' if status else 'nil'
+        sort_arg = f'"{sort_by}"' if sort_by else '"modified"'
+        
+        expression = f'(my/api-list-notes {type_arg} {status_arg} {limit} {sort_arg})'
+        return self.eval_elisp(expression)
