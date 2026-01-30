@@ -485,7 +485,7 @@ TOOL_SCHEMAS = [
             "type": "object",
             "properties": {
                 "identifier": {"type": "string", "description": "Org-roam node ID or path"},
-                "archive": {"type": "boolean", "default": false}
+                "archive": {"type": "boolean", "default": False}
             },
             "required": ["identifier"]
         }
