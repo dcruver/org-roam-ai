@@ -74,6 +74,16 @@
             props))
       (error '()))))
 
+(defun my/api--strip-embedding-properties (content)
+  "Remove :EMBEDDING: property lines from CONTENT.
+These are large float arrays that cause JSON parsing issues when
+output through emacsclient."
+  (when content
+    (replace-regexp-in-string
+     "^:EMBEDDING[^:]*:.*$" "" content)))
+
+
+
 (defun my/api--generate-and-save-embedding (file-path)
   "Generate embedding for FILE-PATH and save the buffer.
 This is a helper function to ensure embeddings are persisted to disk."
@@ -175,12 +185,13 @@ Returns semantically similar notes with full content for RAG applications."
                                    (similarity (cadr result))
                                    (node (let ((id (caar (org-roam-db-query [:select [id] :from nodes :where (= file $s1)] file))))
                                           (when id (org-roam-node-from-id id))))
-                                   (full-content (when file
-                                                  (condition-case nil
-                                                      (with-temp-buffer
-                                                        (insert-file-contents file)
-                                                        (buffer-string))
-                                                    (error ""))))
+                                   (full-content (my/api--strip-embedding-properties
+                                                  (when file
+                                                    (condition-case nil
+                                                        (with-temp-buffer
+                                                          (insert-file-contents file)
+                                                          (buffer-string))
+                                                      (error "")))))
                                    (properties (my/api--extract-properties file))
                                    (backlinks (when node (org-roam-backlinks-get node)))
                                    (forward-links (when node
@@ -294,12 +305,13 @@ Returns semantically similar notes with full content for RAG applications."
 (defun my/api--enrich-node-context (node query-words)
   "Enrich NODE with full content, connections, and relevance scoring."
   (let* ((file (org-roam-node-file node))
-         (full-content (when file
-                        (condition-case nil
-                            (with-temp-buffer
-                              (insert-file-contents file)
-                              (buffer-string))
-                          (error ""))))
+         (full-content (my/api--strip-embedding-properties
+                        (when file
+                          (condition-case nil
+                              (with-temp-buffer
+                                (insert-file-contents file)
+                                (buffer-string))
+                            (error "")))))
          (backlinks (org-roam-backlinks-get node))
          (forward-links (when file
                          (org-roam-db-query
