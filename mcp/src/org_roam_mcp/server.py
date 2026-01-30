@@ -468,6 +468,67 @@ TOOL_SCHEMAS = [
         }
     },
     {
+        "name": "get_note_properties",
+        "description": "Get metadata for a note without full content.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"type": "string", "description": "Org-roam node ID or path"}
+            },
+            "required": ["identifier"]
+        }
+    },
+    {
+        "name": "delete_note",
+        "description": "Delete or archive a note.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"type": "string", "description": "Org-roam node ID or path"},
+                "archive": {"type": "boolean", "default": false}
+            },
+            "required": ["identifier"]
+        }
+    },
+    {
+        "name": "rename_note",
+        "description": "Rename a note.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"type": "string"},
+                "new_title": {"type": "string"}
+            },
+            "required": ["identifier", "new_title"]
+        }
+    },
+    {
+        "name": "manage_tags",
+        "description": "Add or remove filetags from a note.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"type": "string"},
+                "action": {"type": "string", "enum": ["add", "remove"]},
+                "tag": {"type": "string"}
+            },
+            "required": ["identifier", "action", "tag"]
+        }
+    },
+    {
+        "name": "add_link",
+        "description": "Create an org-roam link from one note to another.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from_id": {"type": "string"},
+                "to_id": {"type": "string"},
+                "section": {"type": "string"}
+            },
+            "required": ["from_id", "to_id"]
+        }
+    },
+    {
         "name": "change_task_state",
         "description": "Change the TODO state of a task in an org-roam project file. Triggers journal logging hooks for state change tracking.",
         "inputSchema": {
@@ -693,6 +754,69 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                     )
                 ]
             )
+
+
+        elif tool_name == "get_note_properties":
+            identifier = arguments["identifier"]
+            result = emacs_client.get_note_properties(identifier)
+            result = _sanitize_result(result)
+            if result.get("success"):
+                props = [f"**{result.get('title', 'Untitled')}**"]
+                props.append(f"ID: {result.get('id', 'N/A')}")
+                props.append(f"File: {result.get('file', 'N/A')}")
+                if result.get('node_type'): props.append(f"Type: {result.get('node_type')}")
+                if result.get('status'): props.append(f"Status: {result.get('status')}")
+                response = "\n".join(props)
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+            return CallToolResult(content=[TextContent(type="text", text=response)])
+
+        elif tool_name == "delete_note":
+            identifier = arguments["identifier"]
+            archive = arguments.get("archive", False)
+            result = emacs_client.delete_note(identifier, archive)
+            result = _sanitize_result(result)
+            action = "archived" if archive else "deleted"
+            if result.get("success"):
+                response = f"Note {action}: {result.get('file', identifier)}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+            return CallToolResult(content=[TextContent(type="text", text=response)])
+
+        elif tool_name == "rename_note":
+            identifier = arguments["identifier"]
+            new_title = arguments["new_title"]
+            result = emacs_client.rename_note(identifier, new_title)
+            result = _sanitize_result(result)
+            if result.get("success"):
+                response = f"Renamed to: {result.get('new_title')}\nNew file: {result.get('new_file')}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+            return CallToolResult(content=[TextContent(type="text", text=response)])
+
+        elif tool_name == "manage_tags":
+            identifier = arguments["identifier"]
+            action = arguments["action"]
+            tag = arguments["tag"]
+            result = emacs_client.manage_tags(identifier, action, tag)
+            result = _sanitize_result(result)
+            if result.get("success"):
+                response = f"Tag '{tag}' {action}ed on {result.get('file', identifier)}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+            return CallToolResult(content=[TextContent(type="text", text=response)])
+
+        elif tool_name == "add_link":
+            from_id = arguments["from_id"]
+            to_id = arguments["to_id"]
+            section = arguments.get("section")
+            result = emacs_client.add_link(from_id, to_id, section)
+            result = _sanitize_result(result)
+            if result.get("success"):
+                response = f"Link added: {result.get('from')} -> {result.get('to_title')}"
+            else:
+                response = f"Error: {result.get('error', 'Unknown error')}"
+            return CallToolResult(content=[TextContent(type="text", text=response)])
 
         elif tool_name == "semantic_search":
             query = arguments["query"]
@@ -1620,6 +1744,26 @@ def create_starlette_app():
                             "content": [{"type": "text", "text": response}]
                         }
                     })
+
+                elif tool_name == "get_note_properties":
+                    result = emacs_client.get_note_properties(arguments.get("identifier"))
+                    return JSONResponse({"jsonrpc": "2.0", "id": rpc_request.get("id"), "result": result})
+
+                elif tool_name == "delete_note":
+                    result = emacs_client.delete_note(arguments.get("identifier"), arguments.get("archive", False))
+                    return JSONResponse({"jsonrpc": "2.0", "id": rpc_request.get("id"), "result": result})
+
+                elif tool_name == "rename_note":
+                    result = emacs_client.rename_note(arguments.get("identifier"), arguments.get("new_title"))
+                    return JSONResponse({"jsonrpc": "2.0", "id": rpc_request.get("id"), "result": result})
+
+                elif tool_name == "manage_tags":
+                    result = emacs_client.manage_tags(arguments.get("identifier"), arguments.get("action"), arguments.get("tag"))
+                    return JSONResponse({"jsonrpc": "2.0", "id": rpc_request.get("id"), "result": result})
+
+                elif tool_name == "add_link":
+                    result = emacs_client.add_link(arguments.get("from_id"), arguments.get("to_id"), arguments.get("section"))
+                    return JSONResponse({"jsonrpc": "2.0", "id": rpc_request.get("id"), "result": result})
                 elif tool_name == "add_daily_entry":
                     timestamp = arguments.get("timestamp")
                     title = arguments.get("title")

@@ -1056,3 +1056,32 @@ class EmacsClient:
         
         expression = f'(my/api-list-notes {type_arg} {status_arg} {limit} {sort_arg})'
         return self.eval_elisp(expression)
+
+    def get_note_properties(self, identifier: str) -> Dict[str, Any]:
+        """Get metadata for a note without full content."""
+        expression = f'(my/api-get-note-properties "{self._escape_for_elisp(identifier)}")'
+        return self.eval_elisp(expression)
+
+    def delete_note(self, identifier: str, archive: bool = False) -> Dict[str, Any]:
+        """Delete or archive a note."""
+        archive_arg = "t" if archive else "nil"
+        expression = f'(my/api-delete-note "{self._escape_for_elisp(identifier)}" {archive_arg})'
+        return self.eval_elisp(expression)
+
+    def rename_note(self, identifier: str, new_title: str) -> Dict[str, Any]:
+        """Rename a note and update its title."""
+        expression = f'(my/api-rename-note "{self._escape_for_elisp(identifier)}" "{self._escape_for_elisp(new_title)}")'
+        return self.eval_elisp(expression)
+
+    def manage_tags(self, identifier: str, action: str, tag: str) -> Dict[str, Any]:
+        """Add or remove a tag from a note."""
+        expression = f'(my/api-manage-tags "{self._escape_for_elisp(identifier)}" "{action}" "{self._escape_for_elisp(tag)}")'
+        return self.eval_elisp(expression)
+
+    def add_link(self, from_id: str, to_id: str, section: str = None) -> Dict[str, Any]:
+        """Add an org-roam link between two notes."""
+        if section:
+            expression = f'(my/api-add-link "{self._escape_for_elisp(from_id)}" "{self._escape_for_elisp(to_id)}" "{self._escape_for_elisp(section)}")'
+        else:
+            expression = f'(my/api-add-link "{self._escape_for_elisp(from_id)}" "{self._escape_for_elisp(to_id)}")'
+        return self.eval_elisp(expression)

@@ -1545,3 +1545,210 @@ SORT-BY: \"created\", \"modified\", or \"title\" (default \"modified\")."
                    (sort_by . ,sort-by)
                    (limit . ,limit)))
        (notes . ,results)))))
+(defun my/api-get-note-properties (identifier)
+  "Get just metadata for a note without full content.
+IDENTIFIER can be an org-roam ID or a path relative to org-roam-directory."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((file (cond
+                    ((and (stringp identifier)
+                          (or (file-exists-p identifier)
+                              (file-exists-p (expand-file-name identifier org-roam-directory))))
+                     (if (file-exists-p identifier)
+                         identifier
+                       (expand-file-name identifier org-roam-directory)))
+                    (t (when-let ((node (org-roam-node-from-id identifier)))
+                         (org-roam-node-file node)))))
+             (node (when file
+                     (let ((id (caar (org-roam-db-query 
+                                     [:select [id] :from nodes :where (= file $s1)] 
+                                     file))))
+                       (when id (org-roam-node-from-id id))))))
+        (if (not file)
+            (json-encode (list (cons (quote success) :json-false)
+                              (cons (quote error) (format "Note not found: %s" identifier))))
+          (let* ((properties (my/api--extract-properties file))
+                 (title (when node (org-roam-node-title node)))
+                 (tags (when node (org-roam-node-tags node)))
+                 (forward-links (org-roam-db-query
+                                [:select [dest] :from links :where (= source $s1)]
+                                (org-roam-node-id node)))
+                 (backlinks (mapcar (lambda (bl) (org-roam-node-id (org-roam-backlink-source-node bl)))
+                                   (org-roam-backlinks-get node))))
+            (json-encode
+             (list (cons (quote success) t)
+                   (cons (quote file) file)
+                   (cons (quote id) (when node (org-roam-node-id node)))
+                   (cons (quote title) title)
+                   (cons (quote status) (cdr (assoc "status" properties)))
+                   (cons (quote priority) (cdr (assoc "priority" properties)))
+                   (cons (quote node_type) (cdr (assoc "node-type" properties)))
+                   (cons (quote created) (cdr (assoc "created" properties)))
+                   (cons (quote tags) tags)
+                   (cons (quote links_to) (mapcar (function car) forward-links))
+                   (cons (quote links_from) backlinks))))))
+    (error
+     (json-encode (list (cons (quote success) :json-false)
+                       (cons (quote error) (format "Error getting properties: %s" (error-message-string err))))))))
+
+(defun my/api-delete-note (identifier &optional archive)
+  "Delete or archive a note.
+IDENTIFIER can be an org-roam ID or path.
+If ARCHIVE is non-nil, move to archive directory instead of deleting."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((file (cond
+                    ((and (stringp identifier)
+                          (or (file-exists-p identifier)
+                              (file-exists-p (expand-file-name identifier org-roam-directory))))
+                     (if (file-exists-p identifier)
+                         identifier
+                       (expand-file-name identifier org-roam-directory)))
+                    (t (when-let ((node (org-roam-node-from-id identifier)))
+                         (org-roam-node-file node))))))
+        (if (not file)
+            (json-encode (list (cons (quote success) :json-false)
+                              (cons (quote error) (format "Note not found: %s" identifier))))
+          (let ((archive-dir (expand-file-name "archive" org-roam-directory)))
+            (if archive
+                (progn
+                  (unless (file-exists-p archive-dir)
+                    (make-directory archive-dir t))
+                  (rename-file file (expand-file-name (file-name-nondirectory file) archive-dir))
+                  (org-roam-db-sync)
+                  (json-encode (list (cons (quote success) t)
+                                    (cons (quote action) "archived")
+                                    (cons (quote file) file))))
+              (delete-file file)
+              (org-roam-db-sync)
+              (json-encode (list (cons (quote success) t)
+                                (cons (quote action) "deleted")
+                                (cons (quote file) file)))))))
+    (error
+     (json-encode (list (cons (quote success) :json-false)
+                       (cons (quote error) (format "Error: %s" (error-message-string err))))))))
+
+(defun my/api-rename-note (identifier new-title)
+  "Rename a note, updating its title and filename.
+IDENTIFIER can be an org-roam ID or path.
+NEW-TITLE is the new title for the note."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((file (cond
+                    ((and (stringp identifier)
+                          (or (file-exists-p identifier)
+                              (file-exists-p (expand-file-name identifier org-roam-directory))))
+                     (if (file-exists-p identifier)
+                         identifier
+                       (expand-file-name identifier org-roam-directory)))
+                    (t (when-let ((node (org-roam-node-from-id identifier)))
+                         (org-roam-node-file node))))))
+        (if (not file)
+            (json-encode (list (cons (quote success) :json-false)
+                              (cons (quote error) (format "Note not found: %s" identifier))))
+          (with-current-buffer (find-file-noselect file)
+            (goto-char (point-min))
+            (when (re-search-forward "^#\\+title:.*$" nil t)
+              (replace-match (format "#+title: %s" new-title)))
+            (my/api--save-buffer-no-hooks))
+          (let* ((node (org-roam-node-at-point))
+                 (new-slug (downcase (replace-regexp-in-string "[^a-zA-Z0-9]+" "-" new-title)))
+                 (id (when node (org-roam-node-id node)))
+                 (new-filename (format "%s-%s.org" new-slug (or id (format-time-string "%s"))))
+                 (new-path (expand-file-name new-filename (file-name-directory file))))
+            (unless (string= file new-path)
+              (rename-file file new-path)
+              (org-roam-db-sync))
+            (json-encode (list (cons (quote success) t)
+                              (cons (quote old_file) file)
+                              (cons (quote new_file) new-path)
+                              (cons (quote new_title) new-title))))))
+    (error
+     (json-encode (list (cons (quote success) :json-false)
+                       (cons (quote error) (format "Error: %s" (error-message-string err))))))))
+
+(defun my/api-manage-tags (identifier action tag)
+  "Add or remove a tag from a note.
+IDENTIFIER can be an org-roam ID or path.
+ACTION is \"add\" or \"remove\".
+TAG is the tag to add or remove (without colons)."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((file (cond
+                    ((and (stringp identifier)
+                          (or (file-exists-p identifier)
+                              (file-exists-p (expand-file-name identifier org-roam-directory))))
+                     (if (file-exists-p identifier)
+                         identifier
+                       (expand-file-name identifier org-roam-directory)))
+                    (t (when-let ((node (org-roam-node-from-id identifier)))
+                         (org-roam-node-file node))))))
+        (if (not file)
+            (json-encode (list (cons (quote success) :json-false)
+                              (cons (quote error) (format "Note not found: %s" identifier))))
+          (with-current-buffer (find-file-noselect file)
+            (goto-char (point-min))
+            (let ((filetags-line (when (re-search-forward "^#\\+filetags:\\s-*\\(.*\\)$" nil t)
+                                  (match-string 1))))
+              (goto-char (point-min))
+              (cond
+               ((string= action "add")
+                (if filetags-line
+                    (progn
+                      (re-search-forward "^#\\+filetags:.*$" nil t)
+                      (replace-match (format "#+filetags: %s:%s:" 
+                                            (string-trim-right filetags-line ":") tag)))
+                  (re-search-forward "^#\\+title:.*$" nil t)
+                  (end-of-line)
+                  (insert (format "\n#+filetags: :%s:" tag))))
+               ((string= action "remove")
+                (when filetags-line
+                  (re-search-forward "^#\\+filetags:.*$" nil t)
+                  (replace-match (format "#+filetags: %s" 
+                                        (replace-regexp-in-string (format ":%s:" tag) ":" filetags-line))))))
+              (my/api--save-buffer-no-hooks)
+              (org-roam-db-sync)
+              (json-encode (list (cons (quote success) t)
+                                (cons (quote action) action)
+                                (cons (quote tag) tag)
+                                (cons (quote file) file)))))))
+    (error
+     (json-encode (list (cons (quote success) :json-false)
+                       (cons (quote error) (format "Error: %s" (error-message-string err))))))))
+
+(defun my/api-add-link (from-id to-id &optional section)
+  "Add an org-roam link from one note to another.
+FROM-ID is the source note ID.
+TO-ID is the destination note ID.
+SECTION is optional heading to add link under."
+  (my/api--ensure-org-roam-db)
+  (condition-case err
+      (let* ((from-node (org-roam-node-from-id from-id))
+             (to-node (org-roam-node-from-id to-id))
+             (from-file (when from-node (org-roam-node-file from-node)))
+             (to-title (when to-node (org-roam-node-title to-node))))
+        (if (not (and from-file to-node))
+            (json-encode (list (cons (quote success) :json-false)
+                              (cons (quote error) "Source or destination note not found")))
+          (with-current-buffer (find-file-noselect from-file)
+            (if section
+                (progn
+                  (goto-char (point-min))
+                  (if (re-search-forward (format "^\\*+[ \t]+%s" (regexp-quote section)) nil t)
+                      (progn
+                        (org-end-of-subtree t t)
+                        (skip-chars-backward " \t\n")
+                        (insert (format "\n- [[id:%s][%s]]" to-id to-title)))
+                    (goto-char (point-max))
+                    (insert (format "\n* %s\n- [[id:%s][%s]]" section to-id to-title))))
+              (goto-char (point-max))
+              (insert (format "\n- [[id:%s][%s]]" to-id to-title)))
+            (my/api--save-buffer-no-hooks)
+            (org-roam-db-sync)
+            (json-encode (list (cons (quote success) t)
+                              (cons (quote from) from-id)
+                              (cons (quote to) to-id)
+                              (cons (quote to_title) to-title))))))
+    (error
+     (json-encode (list (cons (quote success) :json-false)
+                       (cons (quote error) (format "Error: %s" (error-message-string err))))))))
