@@ -1,3 +1,10 @@
+> ⚠️ **DEPRECATED**: This repository has been merged into [org-roam-second-brain](https://github.com/dcruver/org-roam-second-brain).
+> 
+> All functionality from this repo (including `org-roam-api.el` and the MCP server) is now part of org-roam-second-brain.
+> Please use that repository for the latest updates.
+
+---
+
 # org-roam-ai
 
 **MCP Server and API for org-roam knowledge base integration**
