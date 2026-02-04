@@ -807,7 +807,8 @@ class EmacsClient:
         title: str,
         status: Optional[str] = None,
         next_action: Optional[str] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        content: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a project node with structured fields.
 
@@ -816,10 +817,16 @@ class EmacsClient:
             status: Project status (active, waiting, blocked, someday, done)
             next_action: Next actionable step
             notes: Additional notes about this project
+            content: Full org-mode content (bypasses template if provided)
 
         Returns:
             Creation result with note details
         """
+        # If full content provided, write file directly instead of using elisp template
+        if content:
+            return self._create_project_with_content(title, status or "active", content)
+        
+        # Otherwise use the elisp template approach
         params = [f'"{self._escape_for_elisp(title)}"']
 
         if status:
@@ -839,6 +846,89 @@ class EmacsClient:
 
         expression = f'(my/api-create-project {" ".join(params)})'
         return self.eval_elisp(expression)
+
+    def _create_project_with_content(
+        self,
+        title: str,
+        status: str,
+        content: str
+    ) -> Dict[str, Any]:
+        """Create a project note with full custom content."""
+        import time
+        import re as re_module
+        
+        note_id = str(int(time.time()))
+        safe_title = re_module.sub(r'[^a-zA-Z0-9-]', '-', title.lower())
+        safe_title = re_module.sub(r'-+', '-', safe_title).strip('-')[:50]
+        filename = f"{safe_title}-{note_id}.org"
+        
+        org_roam_dir = self._get_org_roam_directory()
+        file_path = os.path.join(org_roam_dir, "projects", filename)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        if content.strip().startswith(":PROPERTIES:"):
+            file_content = content
+        else:
+            file_content = f""":PROPERTIES:
+:ID: {note_id}
+:NODE-TYPE: project
+:STATUS: {status}
+:END:
+#+title: {title}
+#+filetags: :project:
+
+{content}
+"""
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(file_content)
+        
+        self._eval_elisp_raw('(org-roam-db-sync)')
+        
+        try:
+            self._eval_elisp_raw(f'(my/api--generate-and-save-embedding "{self._escape_for_elisp(file_path)}")')
+        except Exception:
+            pass
+        
+        return {
+            "success": True,
+            "message": "Project note created successfully",
+            "note": {
+                "id": note_id,
+                "title": title,
+                "file": file_path,
+                "node_type": "project",
+                "status": status
+            }
+        }
+
+
+    def _eval_elisp_raw(self, expression: str) -> str:
+        """Evaluate elisp expression and return raw string (no JSON parsing)."""
+        safe_expression = (expression
+                          .replace("\\", "\\\\")
+                          .replace('"', '\\"')
+                          .replace('`', '\\`')
+                          .replace('$', '\\$'))
+        if os.path.exists(self.server_file):
+            command = f'emacsclient --server-file={self.server_file} -e "{safe_expression}"'
+        else:
+            command = f'emacsclient -e "{safe_expression}"'
+        return self._execute_command(command)
+
+    def _get_org_roam_directory(self) -> str:
+        """Get the org-roam directory path."""
+        # Use _execute_command directly since this returns a plain string, not JSON
+        expression = '(expand-file-name org-roam-directory)'
+        if os.path.exists(self.server_file):
+            command = f'emacsclient --server-file={self.server_file} -e "{expression}"'
+        else:
+            command = f'emacsclient -e "{expression}"'
+        try:
+            result = self._execute_command(command)
+            return result.strip().strip('"')
+        except Exception:
+            return os.path.expanduser("~/org-roam")
 
     def create_idea(
         self,

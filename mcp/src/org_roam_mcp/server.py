@@ -333,6 +333,10 @@ TOOL_SCHEMAS = [
                 "notes": {
                     "type": "string",
                     "description": "Additional notes about this project"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full org-mode content (if provided, replaces template-based creation)"
                 }
             },
             "required": ["title"]
@@ -1026,8 +1030,9 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
             status = arguments.get("status", "active")
             next_action = arguments.get("next_action")
             notes = arguments.get("notes")
+            content = arguments.get("content")
 
-            result = emacs_client.create_project(title, status, next_action, notes)
+            result = emacs_client.create_project(title, status, next_action, notes, content)
 
             if result.get("success"):
                 note_info = result.get("note", {})
@@ -1897,8 +1902,9 @@ def create_starlette_app():
                     status = arguments.get("status", "active")
                     next_action = arguments.get("next_action")
                     notes = arguments.get("notes")
+                    content = arguments.get("content")
 
-                    result = emacs_client.create_project(title, status, next_action, notes)
+                    result = emacs_client.create_project(title, status, next_action, notes, content)
 
                     if result.get("success"):
                         note_info = result.get("note", {})
