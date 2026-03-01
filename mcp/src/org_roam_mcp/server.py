@@ -1373,6 +1373,8 @@ def _format_contextual_search_results(result: Dict[str, Any]) -> str:
 
 def _deduplicate_notes(notes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Deduplicate notes by file path, keeping highest similarity score."""
+    if not notes:
+        return []
     seen_files = {}
     for note in notes:
         file_path = note.get('file', note.get('id', ''))
